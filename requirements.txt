@@ -1,0 +1,20 @@
+# LinkedIn自動化システム - 必要なPythonパッケージ
+
+# Webスクレイピング・自動化
+selenium>=4.15.0
+webdriver-manager>=4.0.1
+
+# Streamlit UI
+streamlit>=1.28.0
+
+# データ処理
+pandas>=2.1.0
+
+# 環境変数管理
+python-dotenv>=1.0.0
+
+# OpenAI API（AIスコアリング用）
+openai>=1.3.0
+
+# その他
+requests>=2.31.0
