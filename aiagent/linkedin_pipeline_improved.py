@@ -93,32 +93,35 @@ def manual_login():
 # ==============================
 def check_connection_status(driver):
     """現在の接続状態を確認（つながり済み、保留中など）"""
+    print("\n🔍 接続状態をチェック中...")
 
-    # 「つながっています」「メッセージ」などのボタンがある場合は既接続
+    # <main>タグ内のボタンのみをチェック（ナビゲーションバーのボタンを除外）
     try:
         connected_patterns = [
-            "//button[contains(., 'つながっています')]",
-            "//button[contains(., 'Connected')]",
-            "//button[contains(., 'メッセージ')]",
-            "//button[contains(., 'Message')]",
+            ("//main//button[contains(., 'つながっています')]", "つながっています"),
+            ("//main//button[contains(., 'Connected')]", "Connected"),
+            # メッセージパターンは削除（ナビゲーションバーのボタンと誤検知するため）
         ]
 
-        for pattern in connected_patterns:
+        for pattern, label in connected_patterns:
             elements = driver.find_elements(By.XPATH, pattern)
             if elements:
+                print(f"   ✓ 検出: 「{label}」ボタン発見 → 既接続と判定")
                 return "already_connected"
 
         # 「保留中」パターン
         pending_patterns = [
-            "//button[contains(., '保留中')]",
-            "//button[contains(., 'Pending')]",
+            ("//main//button[contains(., '保留中')]", "保留中"),
+            ("//main//button[contains(., 'Pending')]", "Pending"),
         ]
 
-        for pattern in pending_patterns:
+        for pattern, label in pending_patterns:
             elements = driver.find_elements(By.XPATH, pattern)
             if elements:
+                print(f"   ✓ 検出: 「{label}」ボタン発見 → 保留中と判定")
                 return "pending"
 
+        print("   ✓ 既接続・保留中ボタンなし → 未接続と判定")
         return "not_connected"
 
     except Exception as e:
@@ -272,11 +275,13 @@ def find_connect_button_strategy2(driver):
     return None
 
 def find_connect_button_strategy3(driver):
-    """戦略3: 全ボタンをスキャンして判定"""
+    """戦略3: mainタグ内の全ボタンをスキャンして判定"""
     print("   🔍 戦略3: 全ボタンスキャンを試行...")
 
     try:
-        all_buttons = driver.find_elements(By.TAG_NAME, "button")
+        # <main>タグ内のボタンのみをスキャン
+        main = driver.find_element(By.TAG_NAME, "main")
+        all_buttons = main.find_elements(By.TAG_NAME, "button")
 
         for btn in all_buttons:
             try:
@@ -303,8 +308,8 @@ def find_connect_button(driver):
     """複数戦略でボタンを検出"""
     print("\n🔍 「つながりを申請」ボタン検出開始...")
 
+    # 戦略1（JavaScript詳細検出）は削除（常にnullを返すため）
     strategies = [
-        find_connect_button_strategy1,
         find_connect_button_strategy2,
         find_connect_button_strategy3,
     ]
