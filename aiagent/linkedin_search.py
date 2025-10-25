@@ -4,6 +4,7 @@
 import os
 import csv
 import time
+import pickle
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
@@ -19,15 +20,15 @@ from webdriver_manager.chrome import ChromeDriverManager
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 OUTPUT_FILE = os.path.join(DATA_DIR, "candidates_raw.csv")
+COOKIE_FILE = os.path.join(DATA_DIR, "cookies.pkl")
 
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # ==============================
-# 手動ログイン
+# ログイン（自動/手動）
 # ==============================
-def manual_login():
-    """手動でLinkedInにログイン"""
-    print("🔑 LinkedIn 手動ログインモード開始...")
+def login():
+    """LinkedInにログイン（Cookie保存で2回目以降は自動）"""
 
     options = Options()
     options.add_argument("--start-maximized")
@@ -37,6 +38,42 @@ def manual_login():
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=options)
 
+    # Cookie保存ファイルが存在するか確認
+    if os.path.exists(COOKIE_FILE):
+        print("🔑 保存されたCookieを使用して自動ログイン中...")
+
+        # まずLinkedInにアクセス（Cookieを設定するため）
+        driver.get("https://www.linkedin.com")
+        time.sleep(2)
+
+        # Cookieを読み込み
+        try:
+            with open(COOKIE_FILE, "rb") as f:
+                cookies = pickle.load(f)
+
+            for cookie in cookies:
+                driver.add_cookie(cookie)
+
+            # Cookieを設定後、再度アクセス
+            driver.get("https://www.linkedin.com/feed")
+            time.sleep(3)
+
+            # ログイン成功確認
+            if "feed" in driver.current_url or "home" in driver.current_url:
+                print("✅ 自動ログイン成功！")
+                return driver
+            else:
+                print("⚠️ Cookieが期限切れです。手動ログインに切り替えます...")
+                os.remove(COOKIE_FILE)  # 古いCookieを削除
+
+        except Exception as e:
+            print(f"⚠️ Cookie読み込みエラー: {e}")
+            print("   手動ログインに切り替えます...")
+            if os.path.exists(COOKIE_FILE):
+                os.remove(COOKIE_FILE)
+
+    # 手動ログイン
+    print("🔑 LinkedIn 手動ログインモード開始...")
     driver.get("https://www.linkedin.com/login")
     print("🌐 ご自身でLinkedInにログインしてください...")
     print("💡 ログイン後、feedページが表示されるまで待機します...")
@@ -46,6 +83,17 @@ def manual_login():
         time.sleep(1.5)
 
     print("✅ ログイン完了を検出しました。")
+
+    # Cookieを保存
+    try:
+        cookies = driver.get_cookies()
+        with open(COOKIE_FILE, "wb") as f:
+            pickle.dump(cookies, f)
+        print(f"💾 Cookieを保存しました: {COOKIE_FILE}")
+        print("   次回から自動ログインが使用されます。")
+    except Exception as e:
+        print(f"⚠️ Cookie保存エラー: {e}")
+
     return driver
 
 # ==============================
@@ -180,7 +228,7 @@ def search_candidates(keywords, location="Japan", max_pages=3):
         抽出した候補者数
     """
 
-    driver = manual_login()
+    driver = login()
 
     # 検索URLを構築
     search_url = f"https://www.linkedin.com/search/results/people/?keywords={keywords}&origin=GLOBAL_SEARCH_HEADER"

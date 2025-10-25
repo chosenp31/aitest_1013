@@ -28,3 +28,4 @@ logs/
 # （任意）一時ファイルやバックアップ
 *.bak
 *.tmp
+screenshot.png
