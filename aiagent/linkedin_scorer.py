@@ -24,7 +24,8 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 # スコアリング基準
 MAX_AGE = int(os.getenv("MAX_AGE", 40))
-MIN_SCORE = int(os.getenv("MIN_SCORE", 70))
+MIN_SCORE = int(os.getenv("MIN_SCORE", 60))
+MAX_SEND_COUNT = int(os.getenv("MAX_SEND_COUNT", 10))  # 1回あたりの最大送信数
 
 # ==============================
 # OpenAIクライアント
@@ -61,6 +62,7 @@ SCORING_PROMPT = """
    - 学生、未経験者
    - IT業界と無関係（飲食、販売、製造など）
    - 推定年齢が40歳を大きく超える
+   - 経営層の役職（社長、CEO、CIO、執行役員、取締役など）
 
 【出力形式】
 以下のJSON形式で出力してください。他の説明は一切不要です。
@@ -76,10 +78,11 @@ SCORING_PROMPT = """
 【スコアの目安】
 - 90-100点: 完璧にマッチ（IT業界経験豊富、適切な年齢、関連スキル）
 - 70-89点: 良好（IT業界経験あり、年齢範囲内）
-- 50-69点: 微妙（IT業界だが条件が一部不一致）
-- 0-49点: 不適合（学生、未経験、無関係な業界、年齢超過）
+- 60-69点: 可（IT業界経験あり、一部条件不一致）
+- 40-59点: 微妙（IT業界だが条件が一部不一致）
+- 0-39点: 不適合（学生、未経験、無関係な業界、年齢超過、経営層）
 
-70点以上の場合は"send"、それ未満は"skip"としてください。
+60点以上の場合は"send"、それ未満は"skip"としてください。
 """
 
 # ==============================
@@ -237,38 +240,48 @@ def score_all_candidates():
 
     print(f"✅ 保存完了: {OUTPUT_FILE}")
 
-    # 送信対象のみを messages.csv に保存
+    # 送信対象を抽出（スコア順でソート）
     send_targets = [r for r in results if r["decision"] == "send"]
+    send_targets.sort(key=lambda x: x["score"], reverse=True)  # スコア降順
 
-    if send_targets:
+    # 上限件数まで絞り込み
+    send_targets_limited = send_targets[:MAX_SEND_COUNT]
+
+    # 送信対象リストを保存（メッセージ機能は削除）
+    if send_targets_limited:
         with open(MESSAGES_FILE, "w", newline="", encoding="utf-8") as f:
-            fieldnames = ["name", "url", "message"]
+            fieldnames = ["name", "url", "score"]
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
-            for target in send_targets:
+            for target in send_targets_limited:
                 writer.writerow({
                     "name": target["name"],
                     "url": target["url"],
-                    "message": "よろしくお願いします"  # デフォルトメッセージ
+                    "score": target["score"]
                 })
 
-        print(f"✅ 送信対象を保存: {MESSAGES_FILE}")
+        print(f"✅ 送信対象リストを保存: {MESSAGES_FILE}")
 
     # サマリー
     print(f"\n{'='*70}")
     print(f"🎯 スコアリング完了サマリー")
     print(f"{'='*70}")
     print(f"総候補者数: {total} 件")
-    print(f"✅ 送信対象: {send_count} 件（{MIN_SCORE}点以上）")
+    print(f"✅ 送信対象: {len(send_targets)} 件（{MIN_SCORE}点以上）")
+    if len(send_targets) > MAX_SEND_COUNT:
+        print(f"   📌 今回送信: {len(send_targets_limited)} 件（上限: {MAX_SEND_COUNT}件）")
+        print(f"   ⏭️  次回送信: {len(send_targets) - MAX_SEND_COUNT} 件")
+    else:
+        print(f"   📌 今回送信: {len(send_targets_limited)} 件")
     print(f"⚪ スキップ: {skip_count} 件")
     print(f"{'='*70}\n")
 
-    if send_targets:
+    if send_targets_limited:
         print(f"💡 次のステップ: python3 aiagent/linkedin_pipeline_improved.py で送信を実行")
     else:
         print(f"⚠️ 送信対象が0件です。検索条件を変更してみてください。")
 
-    return send_count
+    return len(send_targets_limited)
 
 # ==============================
 # エントリポイント
