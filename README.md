@@ -15,7 +15,7 @@ KPMG Consultingのリファラル採用を効率化するための、**完全自
    - 候補者の年齢を自動推定（職歴・卒業年から）
    - IT業界経験を自動判定
    - 経営層（社長、CEO、CIO等）を自動除外
-   - 60点以上を送信対象に自動抽出（上位10件まで）
+   - 60点以上を送信対象に自動抽出（最大30件まで）
 
 3. **接続リクエスト自動送信**
    - 「つながりを申請」ボタンの自動検出
@@ -78,7 +78,7 @@ OPENAI_MODEL=gpt-4o-mini
 # スコアリング基準
 MAX_AGE=40
 MIN_SCORE=60
-MAX_SEND_COUNT=10
+MAX_SEND_COUNT=30
 EOF
 ```
 
@@ -143,7 +143,7 @@ python3 aiagent/linkedin_scorer.py
 
 **出力:**
 - `data/candidates_scored.csv` - 全候補者のスコア
-- `data/messages.csv` - 送信対象（60点以上、上位10件）
+- `data/messages.csv` - 送信対象（60点以上、最大30件）
 
 ---
 
@@ -262,7 +262,7 @@ python3 aiagent/linkedin_search.py "あなたのキーワード" "Japan" 5
 - ✅ `.gitignore` で機密情報を除外
 
 ### LinkedIn利用規約
-- ⚠️ 送信件数は1日10件を推奨（MAX_SEND_COUNT=10）
+- ⚠️ 送信件数は1日30件以内を推奨（MAX_SEND_COUNT=30）
 - ⚠️ ランダム遅延を設定（人間らしい動作）
 - ⚠️ 過度な自動化はアカウント制限の可能性あり
 
@@ -315,7 +315,7 @@ cat .env
 - ✅ スコアリング基準の更新
   - 最低スコア: 70点 → 60点
   - 除外条件に経営層を追加（社長、CEO、CIO等）
-  - 送信数上限を10件に設定（MAX_SEND_COUNT）
+  - 送信数上限を30件に設定（60点以上全員、最大30件）
 - ✅ Cookie保存で自動ログイン機能を追加
 - ✅ ページネーションボタン誤検出を修正（「1次」フィルター問題）
 - ✅ 候補者抽出セレクターをLinkedIn新DOM構造に対応

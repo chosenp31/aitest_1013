@@ -25,7 +25,7 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 # スコアリング基準
 MAX_AGE = int(os.getenv("MAX_AGE", 40))
 MIN_SCORE = int(os.getenv("MIN_SCORE", 60))
-MAX_SEND_COUNT = int(os.getenv("MAX_SEND_COUNT", 10))  # 1回あたりの最大送信数
+MAX_SEND_COUNT = int(os.getenv("MAX_SEND_COUNT", 30))  # 1回あたりの最大送信数
 
 # ==============================
 # OpenAIクライアント
