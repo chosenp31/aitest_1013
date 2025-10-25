@@ -134,25 +134,71 @@ def debug_search():
     })();
     """
 
-    result = driver.execute_script(debug_script)
+    try:
+        result = driver.execute_script(debug_script)
+    except Exception as e:
+        print(f"❌ JavaScript実行エラー: {e}")
+        result = None
 
-    print(f"\n📍 現在のURL: {result['url']}")
-    print(f"📄 ページタイトル: {result['pageTitle']}")
-    print(f"\n🔍 検索結果の検出状況:")
-    print(f"   検索結果コンテナ: {result['searchContainer']}")
-    print(f"   結果リスト: {result['resultList']}")
-    print(f"\n📊 リストアイテムの検出:")
-    print(f"   パターン1 (li.reusable-search__result-container): {result['listItems1']} 件")
-    print(f"   パターン2 (li[class*='search-result']): {result['listItems2']} 件")
-    print(f"   パターン3 (li[class*='result']): {result['listItems3']} 件")
-    print(f"   パターン4 (div.entity-result): {result['listItems4']} 件")
-    print(f"   パターン5 (ul.reusable-search__entity-result-list li): {result['listItems5']} 件")
-    print(f"\n📋 その他:")
-    print(f"   全<li>タグ: {result['allLi']} 件")
-    print(f"   プロフィールリンク: {result['profileLinks']} 件")
-    print(f"   最初の<li>のクラス名: {result['firstLiClass']}")
-    print(f"\n📝 ページ本文（先頭300文字）:")
-    print(f"{result['bodyText']}")
+    if result is None:
+        print("\n❌ JavaScriptの実行結果がNoneです")
+        print("代わりにシンプルな方法で調査します...\n")
+
+        # シンプルなJavaScriptで再試行
+        simple_script = """
+        const links = Array.from(document.querySelectorAll('a[href*="/in/"]'));
+        const profileLinks = links.filter(a => a.href.includes('/in/') && !a.href.includes('/company/'));
+
+        return {
+            totalLinks: links.length,
+            profileLinks: profileLinks.length,
+            firstLinkHtml: profileLinks[0] ? profileLinks[0].outerHTML.substring(0, 200) : 'None',
+            firstLinkParentHtml: profileLinks[0] && profileLinks[0].parentElement ?
+                profileLinks[0].parentElement.outerHTML.substring(0, 300) : 'None'
+        };
+        """
+
+        simple_result = driver.execute_script(simple_script)
+        print(f"総リンク数: {simple_result['totalLinks']}")
+        print(f"プロフィールリンク数: {simple_result['profileLinks']}")
+        print(f"\n最初のリンクHTML:")
+        print(simple_result['firstLinkHtml'])
+        print(f"\n親要素のHTML:")
+        print(simple_result['firstLinkParentHtml'])
+
+    else:
+        print(f"\n📍 現在のURL: {result.get('url', 'N/A')}")
+        print(f"📄 ページタイトル: {result.get('pageTitle', 'N/A')}")
+        print(f"\n🔍 検索結果の検出状況:")
+        print(f"   検索結果コンテナ: {result.get('searchContainer', 'N/A')}")
+        print(f"   結果リスト: {result.get('resultList', 'N/A')}")
+        print(f"\n📊 リストアイテムの検出:")
+        print(f"   パターン1: {result.get('listItems1', 0)} 件")
+        print(f"   パターン2: {result.get('listItems2', 0)} 件")
+        print(f"   パターン3: {result.get('listItems3', 0)} 件")
+        print(f"   パターン4: {result.get('listItems4', 0)} 件")
+        print(f"   パターン5: {result.get('listItems5', 0)} 件")
+        print(f"\n📋 その他:")
+        print(f"   全<li>タグ: {result.get('allLi', 0)} 件")
+        print(f"   プロフィールリンク: {result.get('profileLinks', 0)} 件")
+
+        # 親要素の情報を表示
+        if 'profileLinkParents' in result and result['profileLinkParents']:
+            print(f"\n🔗 プロフィールリンクの親要素構造:")
+            import json
+            for parent_info in result['profileLinkParents'][:2]:  # 最初の2件のみ
+                print(f"\n   [{parent_info['index']}] {parent_info['linkText']}")
+                print(f"   URL: {parent_info['linkHref']}")
+                print(f"   親要素パス:")
+                for p in parent_info['parentPath'][:3]:  # 3階層まで
+                    print(f"      {p['tag']}.{p['className'][:50]}")
+
+        # サンプルプロフィール情報
+        if 'sampleProfiles' in result and result['sampleProfiles']:
+            print(f"\n👤 サンプルプロフィール:")
+            for profile in result['sampleProfiles']:
+                print(f"\n   [{profile['index']}] コンテナ: {profile['containerTag']}.{profile['containerClass'][:50]}")
+                print(f"   テキスト: {profile['text'][:100]}...")
 
     print("\n" + "="*70)
     print("✅ デバッグ完了")
