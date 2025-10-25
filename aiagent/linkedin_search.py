@@ -232,15 +232,50 @@ def search_candidates(keywords, location="Japan", max_pages=3):
         # 次ページへ
         if page < max_pages:
             try:
-                next_btn = driver.find_element(
-                    By.XPATH,
-                    "//button[contains(@aria-label, '次')] | //button[contains(@aria-label, 'Next')]"
-                )
-                driver.execute_script("arguments[0].scrollIntoView(true);", next_btn)
-                time.sleep(1.0)
-                next_btn.click()
-                print("➡️ 次ページへ遷移...")
-                time.sleep(4.0)
+                # ページネーションボタンを探す（「1次」「2次」などのフィルターボタンと区別）
+                # 戦略1: ページネーションエリア内のボタンに限定
+                next_btn = None
+                try:
+                    next_btn = driver.find_element(
+                        By.XPATH,
+                        "//div[contains(@class, 'artdeco-pagination')]//button[contains(@aria-label, '次') or contains(@aria-label, 'Next')]"
+                    )
+                    print("   ✓ 戦略1: ページネーションエリア内のボタンを検出")
+                except NoSuchElementException:
+                    pass
+
+                # 戦略2: aria-labelが「次へ」で始まるボタン
+                if not next_btn:
+                    try:
+                        next_btn = driver.find_element(
+                            By.XPATH,
+                            "//button[starts-with(@aria-label, '次へ') or starts-with(@aria-label, 'Next')]"
+                        )
+                        print("   ✓ 戦略2: aria-label前方一致で検出")
+                    except NoSuchElementException:
+                        pass
+
+                # 戦略3: ページ下部のボタンのみ（上部のフィルターを除外）
+                if not next_btn:
+                    buttons = driver.find_elements(
+                        By.XPATH,
+                        "//button[contains(@aria-label, '次') or contains(@aria-label, 'Next')]"
+                    )
+                    # Y座標が大きい（ページ下部）のボタンを選択
+                    if buttons:
+                        next_btn = max(buttons, key=lambda btn: btn.location['y'])
+                        print("   ✓ 戦略3: ページ下部のボタンを検出")
+
+                if next_btn:
+                    driver.execute_script("arguments[0].scrollIntoView(true);", next_btn)
+                    time.sleep(1.0)
+                    next_btn.click()
+                    print("➡️ 次ページへ遷移...")
+                    time.sleep(4.0)
+                else:
+                    print("⚠️ 次ページボタンが見つかりません。検索終了。")
+                    break
+
             except NoSuchElementException:
                 print("⚠️ 次ページボタンが見つかりません。検索終了。")
                 break
