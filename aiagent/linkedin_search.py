@@ -52,18 +52,27 @@ def login():
                 cookies = pickle.load(f)
 
             for cookie in cookies:
-                driver.add_cookie(cookie)
+                try:
+                    driver.add_cookie(cookie)
+                except Exception:
+                    # 無効なCookieはスキップ
+                    pass
 
             # Cookieを設定後、再度アクセス
             driver.get("https://www.linkedin.com/feed")
-            time.sleep(3)
+            time.sleep(5)  # 待機時間を延長
 
-            # ログイン成功確認
-            if "feed" in driver.current_url or "home" in driver.current_url:
+            # 現在のURLをデバッグ出力
+            current_url = driver.current_url
+            print(f"   📍 現在のURL: {current_url}")
+
+            # ログイン成功確認（より厳密に）
+            if ("feed" in current_url or "home" in current_url) and "login" not in current_url:
                 print("✅ 自動ログイン成功！")
                 return driver
             else:
-                print("⚠️ Cookieが期限切れです。手動ログインに切り替えます...")
+                print("⚠️ Cookieが期限切れ、または無効です。手動ログインに切り替えます...")
+                print(f"   リダイレクト先: {current_url}")
                 os.remove(COOKIE_FILE)  # 古いCookieを削除
 
         except Exception as e:
