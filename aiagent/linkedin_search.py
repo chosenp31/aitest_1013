@@ -60,33 +60,68 @@ def extract_profiles(driver):
         const results = [];
         const seen = new Set();
 
-        // 検索結果のリストアイテムを取得
-        const items = document.querySelectorAll('li.reusable-search__result-container');
+        // 検索結果のリストアイテムを取得（複数の戦略を試す）
+        let items = [];
+
+        // 戦略1: 新しいクラス名（2025年1月時点）
+        items = document.querySelectorAll('li.qTpSkRrerBcUqHivKtVbqVGnMhgMkDU');
+        console.log('戦略1（新クラス名）:', items.length, '件');
+
+        // 戦略2: フォールバック - 検索結果のul内のli要素
+        if (items.length === 0) {
+            const ul = document.querySelector('ul.gXgHtWXGAynxZWGGYQtgBMtLnHWPyXyPsSuyEH');
+            if (ul) {
+                items = ul.querySelectorAll('li');
+                console.log('戦略2（ul内のli）:', items.length, '件');
+            }
+        }
+
+        // 戦略3: さらなるフォールバック - プロフィールリンクから親のliを取得
+        if (items.length === 0) {
+            const profileLinks = document.querySelectorAll('a[href*="/in/"]');
+            const liSet = new Set();
+            profileLinks.forEach(link => {
+                let current = link;
+                for (let i = 0; i < 10; i++) {
+                    current = current.parentElement;
+                    if (!current) break;
+                    if (current.tagName === 'LI') {
+                        liSet.add(current);
+                        break;
+                    }
+                }
+            });
+            items = Array.from(liSet);
+            console.log('戦略3（リンクから親li）:', items.length, '件');
+        }
 
         items.forEach(item => {
             try {
                 // プロフィールURL
-                const profileLink = item.querySelector('a.app-aware-link[href*="/in/"]');
+                const profileLink = item.querySelector('a[href*="/in/"]');
                 if (!profileLink) return;
 
                 const url = profileLink.href.split('?')[0];
                 if (seen.has(url)) return;
                 seen.add(url);
 
-                // 名前
-                const nameEl = item.querySelector('span[aria-hidden="true"]');
-                const name = nameEl ? nameEl.textContent.trim() : '';
+                // 名前（複数パターンを試す）
+                let name = '';
+                const nameEl1 = item.querySelector('span[aria-hidden="true"]');
+                const nameEl2 = item.querySelector('span.entity-result__title-text span[dir="ltr"]');
+                const nameEl3 = profileLink.querySelector('span[dir="ltr"]');
+                name = (nameEl1 || nameEl2 || nameEl3)?.textContent.trim() || '';
 
                 // 見出し（職種・役職）
-                const headlineEl = item.querySelector('.entity-result__primary-subtitle');
+                const headlineEl = item.querySelector('.entity-result__primary-subtitle, [class*="primary-subtitle"]');
                 const headline = headlineEl ? headlineEl.textContent.trim() : '';
 
                 // 会社・学校
-                const secondaryEl = item.querySelector('.entity-result__secondary-subtitle');
+                const secondaryEl = item.querySelector('.entity-result__secondary-subtitle, [class*="secondary-subtitle"]');
                 const secondary = secondaryEl ? secondaryEl.textContent.trim() : '';
 
                 // 場所
-                const locationEl = item.querySelector('.entity-result__location');
+                const locationEl = item.querySelector('.entity-result__location, [class*="location"]');
                 const location = locationEl ? locationEl.textContent.trim() : '';
 
                 if (name && url) {
@@ -103,6 +138,7 @@ def extract_profiles(driver):
             }
         });
 
+        console.log('最終抽出件数:', results.length, '件');
         return results;
     }
     return extractProfiles();
