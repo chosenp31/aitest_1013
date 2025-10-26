@@ -147,43 +147,61 @@ def get_connections(driver, start_date=None):
         scroll_count += 1
         print(f"   スクロール {scroll_count} 回目...")
 
-    # つながりカードを取得
+    # つながりカードを取得（プロフィールリンクから逆算）
     print("\n📊 つながり情報を抽出中...")
 
     script = """
-    const connectionCards = document.querySelectorAll('li.mn-connection-card');
-    const results = [];
-
-    connectionCards.forEach((card, index) => {
-        // 名前を取得
-        let name = '';
-        const nameEl = card.querySelector('.mn-connection-card__name');
-        if (nameEl) {
-            name = nameEl.textContent.trim();
-        }
-
-        // プロフィールURLを取得
-        let profileUrl = '';
-        const linkEl = card.querySelector('a.mn-connection-card__link');
-        if (linkEl) {
-            profileUrl = linkEl.href;
-        }
-
-        // つながり日付を取得
-        let dateText = '';
-        const dateEl = card.querySelector('.mn-connection-card__time');
-        if (dateEl) {
-            dateText = dateEl.textContent.trim();
-        }
-
-        results.push({
-            name: name,
-            profileUrl: profileUrl,
-            dateText: dateText
+    // プロフィールリンクを検出
+    const profileLinks = Array.from(document.querySelectorAll('a[href*="/in/"]'))
+        .filter(a => {
+            const href = a.getAttribute('href') || '';
+            // /in/で始まるプロフィールリンクのみ
+            return href.match(/\\/in\\/[^/]+\\/?$/);
         });
-    });
 
-    return results;
+    const connectionsMap = new Map();
+
+    for (const link of profileLinks) {
+        const profileUrl = link.href;
+
+        // 既に処理済みならスキップ
+        if (connectionsMap.has(profileUrl)) continue;
+
+        // 名前を取得
+        const name = link.textContent.trim();
+
+        // 親要素を遡ってカードを探す（最大15階層）
+        let card = link;
+        let dateText = '';
+
+        for (let level = 0; level < 15; level++) {
+            card = card.parentElement;
+            if (!card) break;
+
+            const cardText = card.textContent || '';
+
+            // 「につながりました」を含むかチェック
+            if (cardText.includes('につながりました')) {
+                // 日付パターンを抽出
+                const dateMatch = cardText.match(/(\\d{4})年(\\d{1,2})月(\\d{1,2})日につながりました/);
+                if (dateMatch) {
+                    dateText = dateMatch[0];
+                }
+                break;
+            }
+        }
+
+        // 名前がある場合のみ登録（画像リンクなど名前がないものは除外）
+        if (name && dateText) {
+            connectionsMap.set(profileUrl, {
+                name: name,
+                profileUrl: profileUrl,
+                dateText: dateText
+            });
+        }
+    }
+
+    return Array.from(connectionsMap.values());
     """
 
     connections = driver.execute_script(script)
