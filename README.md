@@ -6,24 +6,34 @@ KPMG Consultingのリファラル採用を効率化するための、**完全自
 
 ### ✅ 実装済み機能
 
-1. **候補者自動検索**
+**新しいワークフロー（2025-10-26実装）**
+
+1. **候補者自動検索 + 一括つながり申請**
    - キーワード、地域を柔軟に設定
-   - 複数ページの検索結果を自動抽出
-   - 名前、職歴、会社、場所などを取得
+   - 検索結果から全員に自動でつながり申請（最大50件、テスト時5件）
+   - プロフィール遷移なしで高速処理
 
-2. **AIスコアリング（OpenAI API）**
-   - 候補者の年齢を自動推定（職歴・卒業年から）
-   - IT業界経験を自動判定
-   - 経営層（社長、CEO、CIO等）を自動除外
-   - 60点以上を送信対象に自動抽出（最大30件まで）
+2. **つながりリスト取得**
+   - 日付でフィルタリング（例：2025-10-24以降）
+   - 新規つながりのみを抽出
 
-3. **接続リクエスト自動送信**
-   - 「つながりを申請」ボタンの自動検出
-   - 既接続・保留中を自動スキップ
+3. **プロフィール詳細取得**
+   - 各つながりのプロフィールページから詳細情報を取得
+   - 職歴（会社名、役職、期間）
+   - 学歴（卒業年）
+   - スキル
+
+4. **AIスコアリング（OpenAI API）**
+   - 年齢評価：25-30歳（25点）、31-35歳（20点）、36-40歳（15点）、41歳以上除外
+   - IT業界経験：0-40点（SIer、エンジニア、コンサル等）
+   - ポジション評価：-30〜+20点
+   - 除外条件：経営層（社長、CEO、取締役等）、HR職種（リクルーター、採用担当等）
+   - 60点以上を送信対象に抽出（最大50件、テスト時2件）
+
+5. **AI自動メッセージ生成 + 送信**
+   - OpenAI APIでメッセージを生成（軽微なバリエーション）
+   - LinkedInメッセージ機能で自動送信
    - 送信結果をCSVに記録
-
-4. **ワンコマンド実行**
-   - 検索 → スコアリング → 送信を一気に実行
 
 ---
 
@@ -88,77 +98,78 @@ EOF
 
 ## 📋 使い方
 
-### 🎯 方法1: ワンコマンド実行（推奨）
+### 🎯 新しいワークフロー（推奨）
 
-すべての工程を一度に実行：
+**ステップ1: 候補者検索 + つながり申請**
 
 ```bash
 source venv/bin/activate
-python3 run_pipeline.py
+python3 aiagent/linkedin_send_connections.py
 ```
 
-**実行の流れ:**
-1. 検索条件を入力（キーワード、地域、ページ数）
-2. LinkedIn候補者検索
-3. AIスコアリング
-4. 接続リクエスト送信
+検索キーワード、地域を指定し、検索結果の全員につながり申請を送信します。
+- **テスト時**: 1ページ、最大5件
+- **本番時**: 5ページ、最大50件（コード内のMAX_PAGES, MAX_REQUESTSを変更）
 
-**実行時間の目安:**
-- 検索: 3ページで約5分
-- スコアリング: 100人で約2分（OpenAI API）
-- 送信: 10人で約2分
+**出力:** `data/connection_logs.csv`
 
 ---
 
-### 🔧 方法2: 個別実行（細かく制御したい場合）
-
-#### ステップ1: 候補者検索
+**ステップ2: つながりリスト取得**
 
 ```bash
-python3 aiagent/linkedin_search.py
+python3 aiagent/linkedin_get_connections.py
 ```
 
-**カスタマイズ例:**
+対話式で日付を入力し、その日以降の新規つながりを取得します。
 
-```bash
-# キーワード、地域、ページ数を指定
-python3 aiagent/linkedin_search.py "SIer OR エンジニア" "Tokyo" 5
-```
-
-**出力:** `data/candidates_raw.csv`
+**出力:** `data/new_connections.csv`
 
 ---
 
-#### ステップ2: AIスコアリング
+**ステップ3: プロフィール詳細取得**
 
 ```bash
-python3 aiagent/linkedin_scorer.py
+python3 aiagent/linkedin_get_profiles.py
+```
+
+新規つながりのプロフィールページから詳細情報（職歴、学歴、スキル）を取得します。
+
+**出力:** `data/profile_details.csv`
+
+---
+
+**ステップ4: AIスコアリング**
+
+```bash
+python3 aiagent/linkedin_scorer_v2.py
 ```
 
 **評価基準:**
-- ✅ 年齢40歳以下（職歴・卒業年から推定）
-- ✅ IT業界経験あり（SIer、エンジニア、コンサル等）
-- ❌ 学生、未経験、IT無関係の業界
-- ❌ 経営層（社長、CEO、CIO、執行役員、取締役）
+- ✅ 年齢: 25-30歳（25点）、31-35歳（20点）、36-40歳（15点）
+- ✅ IT業界経験: 0-40点（SIer、エンジニア、コンサル等）
+- ✅ ポジション: -30〜+20点
+- ❌ 41歳以上除外
+- ❌ 経営層除外（社長、CEO、CIO、執行役員、取締役）
+- ❌ HR職種除外（リクルーター、採用担当、ヘッドハンター等）
 
 **出力:**
-- `data/candidates_scored.csv` - 全候補者のスコア
-- `data/messages.csv` - 送信対象（60点以上、最大30件）
+- `data/candidates_scored_v2.csv` - 全候補者のスコア
+- `data/messages_v2.csv` - 送信対象（60点以上、最大50件）
 
 ---
 
-#### ステップ3: 接続リクエスト送信
+**ステップ5: メッセージ生成 + 送信**
 
 ```bash
-python3 aiagent/linkedin_pipeline_improved.py
+python3 aiagent/linkedin_send_messages.py
 ```
 
-**自動処理:**
-- 既につながっている → スキップ
-- 保留中（送信済み） → スキップ
-- 未接続 → 送信
+高スコア候補者にAI生成メッセージを送信します。
+- **テスト時**: 最大2件
+- **本番時**: 最大50件（コード内のMAX_MESSAGESを変更）
 
-**出力:** `data/logs.csv`
+**出力:** `data/message_logs.csv`
 
 ---
 
@@ -167,17 +178,23 @@ python3 aiagent/linkedin_pipeline_improved.py
 ```
 aitest_1013/
 ├── aiagent/
-│   ├── linkedin_search.py              # 候補者検索
-│   ├── linkedin_scorer.py              # AIスコアリング
-│   ├── linkedin_pipeline_improved.py   # 接続リクエスト送信
-│   └── main.py                         # Streamlit UI（開発中）
+│   ├── linkedin_send_connections.py    # Step 1: つながり申請送信
+│   ├── linkedin_get_connections.py     # Step 2: つながりリスト取得
+│   ├── linkedin_get_profiles.py        # Step 3: プロフィール詳細取得
+│   ├── linkedin_scorer_v2.py           # Step 4: AIスコアリング（詳細版）
+│   ├── linkedin_send_messages.py       # Step 5-6: メッセージ生成+送信
+│   ├── linkedin_search.py              # （旧）候補者検索
+│   ├── linkedin_scorer.py              # （旧）AIスコアリング
+│   └── linkedin_pipeline_improved.py   # （旧）接続リクエスト送信
 ├── data/
-│   ├── candidates_raw.csv              # 検索結果（全候補者）
-│   ├── candidates_scored.csv           # スコアリング結果
-│   ├── messages.csv                    # 送信対象リスト
-│   └── logs.csv                        # 送信履歴
+│   ├── connection_logs.csv             # つながり申請履歴
+│   ├── new_connections.csv             # 新規つながりリスト
+│   ├── profile_details.csv             # プロフィール詳細
+│   ├── candidates_scored_v2.csv        # AIスコアリング結果
+│   ├── messages_v2.csv                 # メッセージ送信対象リスト
+│   ├── message_logs.csv                # メッセージ送信履歴
+│   └── cookies.pkl                     # ログインCookie（自動生成）
 ├── debug_output/                       # デバッグファイル保存先
-├── run_pipeline.py                     # ワンコマンド実行
 ├── requirements.txt                    # 依存パッケージ
 ├── .env                                # 環境変数（APIキー等）
 ├── README.md                           # このファイル
@@ -311,14 +328,20 @@ cat .env
 
 ## 📝 変更履歴
 
-### 2025-10-26
+### 2025-10-26（新ワークフロー実装）
+- ✅ **ワークフロー大幅変更**: 全員つながり申請 → プロフィール詳細取得 → AIスコアリング → メッセージ送信
+- ✅ 新スクリプト作成
+  - `linkedin_send_connections.py`: 検索結果から一括つながり申請
+  - `linkedin_get_connections.py`: つながりリスト取得（日付フィルタ）
+  - `linkedin_get_profiles.py`: プロフィール詳細取得（職歴・学歴・スキル）
+  - `linkedin_scorer_v2.py`: 詳細プロフィール版AIスコアリング
+  - `linkedin_send_messages.py`: AI自動メッセージ生成+送信
 - ✅ スコアリング基準の更新
-  - 最低スコア: 70点 → 60点
-  - 除外条件に経営層を追加（社長、CEO、CIO等）
-  - 送信数上限を30件に設定（60点以上全員、最大30件）
-- ✅ Cookie保存で自動ログイン機能を追加
-- ✅ ページネーションボタン誤検出を修正（「1次」フィルター問題）
-- ✅ 候補者抽出セレクターをLinkedIn新DOM構造に対応
+  - 年齢評価を細分化（25-30歳: 25点、31-35歳: 20点、36-40歳: 15点）
+  - 41歳以上を厳格に除外
+  - HR・人材関係職種を除外（リクルーター、採用担当等）
+  - 経営層除外を強化
+- ✅ テスト用制限を追加（つながり申請5件、メッセージ送信2件）
 
 ### 2025-10-25
 - ✅ 完全自動化システムを実装

@@ -1,0 +1,325 @@
+# aiagent/linkedin_get_profiles.py
+# つながりリストからプロフィール詳細を取得
+
+import os
+import time
+import csv
+import pickle
+import random
+from datetime import datetime
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.common.exceptions import NoSuchElementException
+from webdriver_manager.chrome import ChromeDriverManager
+
+# ==============================
+# 設定
+# ==============================
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR = os.path.join(BASE_DIR, "data")
+INPUT_FILE = os.path.join(DATA_DIR, "new_connections.csv")
+OUTPUT_FILE = os.path.join(DATA_DIR, "profile_details.csv")
+COOKIE_FILE = os.path.join(DATA_DIR, "cookies.pkl")
+
+os.makedirs(DATA_DIR, exist_ok=True)
+
+DELAY_RANGE = (3, 5)  # プロフィール間の遅延（秒）
+
+# ==============================
+# ログイン
+# ==============================
+def login():
+    """LinkedInにログイン（Cookie保存で2回目以降は自動）"""
+    options = Options()
+    options.add_argument("--start-maximized")
+    options.add_argument("--disable-notifications")
+    options.add_experimental_option("detach", True)
+
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=options)
+
+    # Cookie自動ログイン
+    if os.path.exists(COOKIE_FILE):
+        print("🔑 保存されたCookieを使用して自動ログイン中...")
+        driver.get("https://www.linkedin.com")
+        time.sleep(2)
+
+        try:
+            with open(COOKIE_FILE, "rb") as f:
+                cookies = pickle.load(f)
+            for cookie in cookies:
+                try:
+                    driver.add_cookie(cookie)
+                except Exception:
+                    pass
+
+            driver.get("https://www.linkedin.com/feed")
+            time.sleep(5)
+
+            current_url = driver.current_url
+            if ("feed" in current_url or "home" in current_url) and "login" not in current_url:
+                print("✅ 自動ログイン成功！")
+                return driver
+            else:
+                print("⚠️ Cookieが期限切れです。手動ログインに切り替えます...")
+                os.remove(COOKIE_FILE)
+        except Exception as e:
+            print(f"⚠️ Cookie読み込みエラー: {e}")
+            if os.path.exists(COOKIE_FILE):
+                os.remove(COOKIE_FILE)
+
+    # 手動ログイン
+    print("🔑 LinkedIn 手動ログインモード開始...")
+    driver.get("https://www.linkedin.com/login")
+    print("🌐 ご自身でLinkedInにログインしてください...")
+
+    while ("feed" not in driver.current_url) and ("home" not in driver.current_url):
+        time.sleep(1.5)
+
+    print("✅ ログイン完了")
+
+    # Cookieを保存
+    try:
+        cookies = driver.get_cookies()
+        with open(COOKIE_FILE, "wb") as f:
+            pickle.dump(cookies, f)
+        print(f"💾 Cookieを保存しました")
+    except Exception as e:
+        print(f"⚠️ Cookie保存エラー: {e}")
+
+    return driver
+
+# ==============================
+# プロフィール詳細取得
+# ==============================
+def get_profile_details(driver, profile_url, name):
+    """
+    プロフィールページから詳細情報を取得
+
+    Args:
+        driver: Selenium WebDriver
+        profile_url: プロフィールURL
+        name: 候補者名
+
+    Returns:
+        dict: プロフィール詳細
+    """
+    try:
+        # プロフィールページへ移動
+        driver.get(profile_url)
+        time.sleep(4)
+
+        # JavaScriptで情報を抽出
+        script = """
+        const result = {
+            headline: '',
+            location: '',
+            experiences: [],
+            education: [],
+            skills: []
+        };
+
+        // ヘッドライン（現在の職歴・役職）
+        const headlineEl = document.querySelector('.text-body-medium.break-words');
+        if (headlineEl) {
+            result.headline = headlineEl.textContent.trim();
+        }
+
+        // 場所
+        const locationEl = document.querySelector('.text-body-small.inline.t-black--light.break-words');
+        if (locationEl) {
+            result.location = locationEl.textContent.trim();
+        }
+
+        // 職歴（Experience section）
+        const experienceSection = document.querySelector('#experience');
+        if (experienceSection) {
+            const expParent = experienceSection.closest('section');
+            if (expParent) {
+                const expItems = expParent.querySelectorAll('li.artdeco-list__item');
+                expItems.forEach(item => {
+                    const titleEl = item.querySelector('.t-bold span[aria-hidden="true"]');
+                    const companyEl = item.querySelector('.t-14.t-normal span[aria-hidden="true"]');
+                    const dateEl = item.querySelector('.t-14.t-normal.t-black--light span[aria-hidden="true"]');
+
+                    if (titleEl) {
+                        result.experiences.push({
+                            title: titleEl.textContent.trim(),
+                            company: companyEl ? companyEl.textContent.trim() : '',
+                            date: dateEl ? dateEl.textContent.trim() : ''
+                        });
+                    }
+                });
+            }
+        }
+
+        // 学歴（Education section）
+        const educationSection = document.querySelector('#education');
+        if (educationSection) {
+            const eduParent = educationSection.closest('section');
+            if (eduParent) {
+                const eduItems = eduParent.querySelectorAll('li.artdeco-list__item');
+                eduItems.forEach(item => {
+                    const schoolEl = item.querySelector('.t-bold span[aria-hidden="true"]');
+                    const degreeEl = item.querySelector('.t-14.t-normal span[aria-hidden="true"]');
+                    const dateEl = item.querySelector('.t-14.t-normal.t-black--light span[aria-hidden="true"]');
+
+                    if (schoolEl) {
+                        result.education.push({
+                            school: schoolEl.textContent.trim(),
+                            degree: degreeEl ? degreeEl.textContent.trim() : '',
+                            date: dateEl ? dateEl.textContent.trim() : ''
+                        });
+                    }
+                });
+            }
+        }
+
+        // スキル（Skills section - 最大10件）
+        const skillsSection = document.querySelector('#skills');
+        if (skillsSection) {
+            const skillParent = skillsSection.closest('section');
+            if (skillParent) {
+                const skillItems = skillParent.querySelectorAll('.hoverable-link-text span[aria-hidden="true"]');
+                skillItems.forEach((skill, idx) => {
+                    if (idx < 10) {  // 最大10件
+                        result.skills.push(skill.textContent.trim());
+                    }
+                });
+            }
+        }
+
+        return result;
+        """
+
+        details = driver.execute_script(script)
+
+        # 職歴を文字列化（改行区切り）
+        experiences_str = "\n".join([
+            f"{exp['title']} @ {exp['company']} ({exp['date']})"
+            for exp in details.get('experiences', [])
+        ])
+
+        # 学歴を文字列化（改行区切り）
+        education_str = "\n".join([
+            f"{edu['school']} - {edu['degree']} ({edu['date']})"
+            for edu in details.get('education', [])
+        ])
+
+        # スキルを文字列化（カンマ区切り）
+        skills_str = ", ".join(details.get('skills', []))
+
+        return {
+            'name': name,
+            'profile_url': profile_url,
+            'headline': details.get('headline', ''),
+            'location': details.get('location', ''),
+            'experiences': experiences_str,
+            'education': education_str,
+            'skills': skills_str
+        }
+
+    except Exception as e:
+        print(f"   ❌ エラー: {e}")
+        return {
+            'name': name,
+            'profile_url': profile_url,
+            'headline': '',
+            'location': '',
+            'experiences': '',
+            'education': '',
+            'skills': ''
+        }
+
+# ==============================
+# メイン処理
+# ==============================
+def main():
+    """メイン処理"""
+
+    if not os.path.exists(INPUT_FILE):
+        print(f"❌ エラー: つながりリストが見つかりません: {INPUT_FILE}")
+        print(f"💡 先に linkedin_get_connections.py を実行してください")
+        return
+
+    # CSV読み込み
+    with open(INPUT_FILE, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        connections = list(reader)
+
+    if not connections:
+        print("⚠️ つながりデータが空です")
+        return
+
+    total = len(connections)
+
+    print(f"\n{'='*70}")
+    print(f"📊 プロフィール詳細取得開始")
+    print(f"{'='*70}")
+    print(f"対象者数: {total} 件")
+    print(f"{'='*70}\n")
+
+    # ログイン
+    driver = login()
+
+    results = []
+
+    for idx, conn in enumerate(connections, start=1):
+        name = conn.get('name', '不明')
+        profile_url = conn.get('profile_url', '')
+
+        if not profile_url:
+            print(f"[{idx}/{total}] ⚠️ {name} - URLなし、スキップ")
+            continue
+
+        print(f"[{idx}/{total}] 🔍 {name} のプロフィールを取得中...")
+
+        # プロフィール詳細取得
+        details = get_profile_details(driver, profile_url, name)
+        results.append(details)
+
+        # 簡易表示
+        print(f"   ✅ ヘッドライン: {details['headline'][:50]}...")
+        print(f"   📍 場所: {details['location']}")
+        print(f"   💼 職歴: {len(details['experiences'].split(chr(10)) if details['experiences'] else [])} 件")
+        print(f"   🎓 学歴: {len(details['education'].split(chr(10)) if details['education'] else [])} 件")
+        print(f"   🔧 スキル: {len(details['skills'].split(',') if details['skills'] else [])} 件\n")
+
+        # 遅延
+        if idx < total:
+            delay = random.uniform(*DELAY_RANGE)
+            time.sleep(delay)
+
+    # CSV保存
+    print(f"\n{'='*70}")
+    print(f"💾 結果を保存中...")
+    print(f"{'='*70}")
+
+    with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
+        fieldnames = ["name", "profile_url", "headline", "location", "experiences", "education", "skills"]
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(results)
+
+    print(f"✅ 保存完了: {OUTPUT_FILE}")
+
+    # サマリー
+    print(f"\n{'='*70}")
+    print(f"🎯 完了サマリー")
+    print(f"{'='*70}")
+    print(f"取得件数: {len(results)} 件")
+    print(f"保存先: {OUTPUT_FILE}")
+    print(f"{'='*70}\n")
+
+    print(f"💡 次のステップ: python3 aiagent/linkedin_scorer_v2.py でAIスコアリングを実行")
+
+    input("\nEnterキーを押してブラウザを閉じます...")
+    driver.quit()
+
+# ==============================
+# エントリポイント
+# ==============================
+if __name__ == "__main__":
+    main()
