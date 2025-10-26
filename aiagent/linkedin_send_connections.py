@@ -26,7 +26,8 @@ COOKIE_FILE = os.path.join(DATA_DIR, "cookies.pkl")
 
 os.makedirs(DATA_DIR, exist_ok=True)
 
-MAX_PAGES = 5  # 最大ページ数（約50件）
+MAX_PAGES = 1  # 最大ページ数（テスト用: 1ページ）
+MAX_REQUESTS = 5  # テスト用: 最大5件
 DELAY_RANGE = (2, 4)  # クリック間隔（秒）
 
 # ==============================
@@ -114,7 +115,7 @@ def log_request(name, result, error=""):
 # ==============================
 # 検索結果ページ上でつながり申請
 # ==============================
-def send_connections_on_page(driver):
+def send_connections_on_page(driver, current_total=0):
     """現在の検索結果ページ上で全ての候補者につながり申請"""
 
     # ページを下までスクロール
@@ -165,6 +166,11 @@ def send_connections_on_page(driver):
         skip_count = 0
 
         for candidate in candidates:
+            # 上限に達したらループを抜ける
+            if current_total + success_count >= MAX_REQUESTS:
+                print(f"\n   ⚠️  上限{MAX_REQUESTS}件に達しました。処理を終了します。")
+                break
+
             name = candidate['name']
             has_button = candidate['hasConnectButton']
 
@@ -265,11 +271,16 @@ def send_connections(keywords, location="Japan", max_pages=MAX_PAGES):
         print(f"\n📄 ページ {page}/{max_pages} を処理中...")
 
         # 現在のページで申請
-        success, skip = send_connections_on_page(driver)
+        success, skip = send_connections_on_page(driver, total_success)
         total_success += success
         total_skip += skip
 
         print(f"   このページ: 成功{success}件、スキップ{skip}件")
+
+        # 上限に達したらループを抜ける
+        if total_success >= MAX_REQUESTS:
+            print(f"\n✅ 目標{MAX_REQUESTS}件に達しました。")
+            break
 
         # 次ページへ
         if page < max_pages:
