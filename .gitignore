@@ -29,3 +29,10 @@ logs/
 *.bak
 *.tmp
 screenshot.png
+
+# デバッグファイル（古い）
+aiagent/linkedin_button_debugger_fixed.py
+aiagent/linkedin_pipeline_fixed_v2.py
+test_linkedin_page.py
+debug_output/
+screenshot*.png
