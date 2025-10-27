@@ -307,17 +307,14 @@ def main():
     total = len(targets)
 
     print(f"\n{'='*70}")
-    print(f"📨 メッセージ送信開始")
+    print(f"📨 メッセージ生成開始")
     print(f"{'='*70}")
     print(f"送信対象: {total} 件")
     print(f"上限: {MAX_MESSAGES} 件")
     print(f"{'='*70}\n")
 
-    # ログイン
-    driver = login()
-
-    success_count = 0
-    error_count = 0
+    # まず全メッセージを生成して表示
+    messages_to_send = []
 
     for idx, target in enumerate(targets, start=1):
         name = target.get('name', '不明')
@@ -326,18 +323,57 @@ def main():
 
         if not profile_url:
             print(f"[{idx}/{total}] ⚠️ {name} - URLなし、スキップ")
-            log_message(name, "", "skip", "URLなし", "no_url")
             continue
 
-        print(f"[{idx}/{total}] 📝 {name} (スコア: {score}点)")
-
-        # メッセージ生成
-        print(f"   💬 メッセージを生成中...")
+        print(f"[{idx}/{total}] 💬 {name} (スコア: {score}点) のメッセージを生成中...")
         message = generate_message(name)
-        print(f"   生成完了: {message[:30]}...")
+
+        messages_to_send.append({
+            'name': name,
+            'profile_url': profile_url,
+            'score': score,
+            'message': message
+        })
+
+    # 生成したメッセージを全て表示
+    print(f"\n{'='*70}")
+    print(f"📋 生成されたメッセージ一覧")
+    print(f"{'='*70}\n")
+
+    for idx, msg_data in enumerate(messages_to_send, start=1):
+        print(f"--- [{idx}/{len(messages_to_send)}] {msg_data['name']} (スコア: {msg_data['score']}点) ---")
+        print(f"{msg_data['message']}")
+        print()
+
+    # ユーザーに確認
+    print(f"{'='*70}")
+    print(f"これらのメッセージを送信しますか？")
+    print(f"{'='*70}")
+    confirm = input("送信する場合は 'yes' と入力してください: ").strip().lower()
+
+    if confirm != 'yes':
+        print("\n❌ 送信をキャンセルしました")
+        return
+
+    # ログイン
+    print(f"\n{'='*70}")
+    print(f"📨 メッセージ送信開始")
+    print(f"{'='*70}\n")
+
+    driver = login()
+
+    success_count = 0
+    error_count = 0
+
+    for idx, msg_data in enumerate(messages_to_send, start=1):
+        name = msg_data['name']
+        profile_url = msg_data['profile_url']
+        score = msg_data['score']
+        message = msg_data['message']
+
+        print(f"[{idx}/{len(messages_to_send)}] 📤 {name} (スコア: {score}点) へ送信中...")
 
         # メッセージ送信
-        print(f"   📤 メッセージを送信中...")
         result, error, details = send_message(driver, profile_url, name, message)
 
         # ログ記録
