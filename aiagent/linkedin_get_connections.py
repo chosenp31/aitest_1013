@@ -127,37 +127,32 @@ def get_connections(driver, start_date=None):
     print("⏳ ページ読み込み中...")
     time.sleep(8)  # 初期読み込みを十分に待つ
 
-    # ページを上下にスクロールして全件読み込み
-    print("📜 ページをスクロール中（全件読み込み）...")
+    # ページを段階的にスクロールして全件読み込み
+    print("📜 ページをゆっくりスクロール中（全件読み込み）...")
 
-    # まず一番上にスクロール（上部要素を確実に表示）
+    # まず一番上に確実にスクロール
     driver.execute_script("window.scrollTo(0, 0);")
-    print("⏳ 上部要素の読み込みを待機中...")
-    time.sleep(5)  # 上部要素が完全に読み込まれるまで待つ
+    time.sleep(3)
 
-    # 下までスクロールして全件読み込み
-    last_height = driver.execute_script("return document.body.scrollHeight")
-    scroll_count = 0
+    # ゆっくり下にスクロール（小刻みに）
+    print("   📜 下方向にゆっくりスクロール...")
+    for i in range(10):  # 10回に分けてスクロール
+        driver.execute_script(f"window.scrollBy(0, {500 * (i + 1)});")
+        time.sleep(1.5)  # 各スクロール後に待機
 
-    while scroll_count < 20:  # 最大20回スクロール
-        # 下までスクロール
-        driver.find_element(By.TAG_NAME, "body").send_keys(Keys.END)
-        time.sleep(2)
+    # 一番下まで到達
+    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+    time.sleep(3)
 
-        # 新しい高さを取得
-        new_height = driver.execute_script("return document.body.scrollHeight")
+    # ゆっくり上にスクロール（小刻みに）
+    print("   📜 上方向にゆっくりスクロール...")
+    for i in range(10):  # 10回に分けてスクロール
+        driver.execute_script(f"window.scrollBy(0, -{500 * (i + 1)});")
+        time.sleep(1.5)  # 各スクロール後に待機
 
-        if new_height == last_height:
-            print("   ✓ すべてのつながりを読み込みました")
-            break
-
-        last_height = new_height
-        scroll_count += 1
-        print(f"   スクロール {scroll_count} 回目...")
-
-    # 最後にもう一度上にスクロールして、全体を確実にDOMに含める
+    # 最後に一番上に戻る
     driver.execute_script("window.scrollTo(0, 0);")
-    print("⏳ 最終確認のため上部要素を再読み込み中...")
+    print("⏳ 最終確認のため上部要素を待機中...")
     time.sleep(5)  # 上部要素が確実にDOMに含まれるまで待つ
 
     # つながりカードを取得（プロフィールリンクから逆算）
