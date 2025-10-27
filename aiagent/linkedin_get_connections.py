@@ -130,15 +130,24 @@ def get_connections(driver, start_date=None):
     # ページを段階的にスクロールして全件読み込み
     print("📜 ページをゆっくりスクロール中（全件読み込み）...")
 
-    # まず一番上に確実にスクロール
-    driver.execute_script("window.scrollTo(0, 0);")
-    time.sleep(3)
+    # スクロールコンテナ（#workspace）を取得
+    try:
+        container = driver.find_element(By.ID, "workspace")
+        print("   ✅ スクロールコンテナ（#workspace）を検出")
+    except:
+        print("   ⚠️ #workspace が見つかりません。ページ全体でスクロールします")
+        container = None
 
     # ゆっくり下にスクロール（自動読み込みを待つ）
     print("   📜 下方向にゆっくりスクロール中...")
     for i in range(30):
-        # 少しずつ下にスクロール
-        driver.execute_script("window.scrollBy(0, 500);")
+        if container:
+            # コンテナ要素をスクロール
+            driver.execute_script("arguments[0].scrollBy(0, 500);", container)
+        else:
+            # フォールバック: ページ全体をスクロール
+            driver.execute_script("window.scrollBy(0, 500);")
+
         time.sleep(3)  # 読み込み待機を長めに
 
         if (i + 1) % 5 == 0:
@@ -147,11 +156,17 @@ def get_connections(driver, start_date=None):
     print("   ✓ スクロール完了")
 
     # 一番下まで到達して最終読み込み
-    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+    if container:
+        driver.execute_script("arguments[0].scrollTo(0, arguments[0].scrollHeight);", container)
+    else:
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
     time.sleep(5)
 
     # 一番上に戻る
-    driver.execute_script("window.scrollTo(0, 0);")
+    if container:
+        driver.execute_script("arguments[0].scrollTo(0, 0);", container)
+    else:
+        driver.execute_script("window.scrollTo(0, 0);")
     print("⏳ 最終確認のため上部要素を待機中...")
     time.sleep(5)
 
