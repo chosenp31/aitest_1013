@@ -127,40 +127,24 @@ def get_connections(driver, start_date=None):
     print("⏳ ページ読み込み中...")
     time.sleep(8)
 
-    # ページを段階的にスクロールして全件読み込み（要素数ベース）
+    # ページを段階的にスクロールして全件読み込み
     print("📜 ページをスクロール中（全件読み込み）...")
 
     # まず一番上に確実にスクロール
     driver.execute_script("window.scrollTo(0, 0);")
     time.sleep(3)
 
-    # 下方向にスクロール（要素数が増えなくなるまで）
+    # 下方向に確実にスクロール（固定30回）
     print("   📜 下方向にスクロール中...")
-    prev_link_count = 0
-    scroll_attempts = 0
-    max_scroll_attempts = 50  # 最大50回
-
-    while scroll_attempts < max_scroll_attempts:
-        # 現在のプロフィールリンク数を取得
-        current_link_count = driver.execute_script("""
-            return document.querySelectorAll('a[href*="/in/"]').length;
-        """)
-
+    for i in range(30):
         # 下にスクロール
         driver.execute_script("window.scrollBy(0, 800);")
-        time.sleep(2)
+        time.sleep(1.5)
 
-        scroll_attempts += 1
+        if (i + 1) % 10 == 0:
+            print(f"   スクロール {i + 1} 回目...")
 
-        # 要素数が増えなくなったら終了
-        if current_link_count == prev_link_count:
-            print(f"   ✓ 全要素を読み込みました（{current_link_count}件のリンク）")
-            break
-
-        if scroll_attempts % 5 == 0:
-            print(f"   スクロール {scroll_attempts} 回目... リンク数: {current_link_count}")
-
-        prev_link_count = current_link_count
+    print("   ✓ スクロール完了")
 
     # 一番下まで到達
     driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
