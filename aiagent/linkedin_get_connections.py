@@ -125,35 +125,51 @@ def get_connections(driver, start_date=None):
     # つながりページへ移動
     driver.get(CONNECTIONS_URL)
     print("⏳ ページ読み込み中...")
-    time.sleep(8)  # 初期読み込みを十分に待つ
+    time.sleep(8)
 
-    # ページを段階的にスクロールして全件読み込み
-    print("📜 ページをゆっくりスクロール中（全件読み込み）...")
+    # ページを段階的にスクロールして全件読み込み（要素数ベース）
+    print("📜 ページをスクロール中（全件読み込み）...")
 
     # まず一番上に確実にスクロール
     driver.execute_script("window.scrollTo(0, 0);")
     time.sleep(3)
 
-    # ゆっくり下にスクロール（小刻みに）
-    print("   📜 下方向にゆっくりスクロール...")
-    for i in range(10):  # 10回に分けてスクロール
-        driver.execute_script(f"window.scrollBy(0, {500 * (i + 1)});")
-        time.sleep(1.5)  # 各スクロール後に待機
+    # 下方向にスクロール（要素数が増えなくなるまで）
+    print("   📜 下方向にスクロール中...")
+    prev_link_count = 0
+    scroll_attempts = 0
+    max_scroll_attempts = 50  # 最大50回
+
+    while scroll_attempts < max_scroll_attempts:
+        # 現在のプロフィールリンク数を取得
+        current_link_count = driver.execute_script("""
+            return document.querySelectorAll('a[href*="/in/"]').length;
+        """)
+
+        # 下にスクロール
+        driver.execute_script("window.scrollBy(0, 800);")
+        time.sleep(2)
+
+        scroll_attempts += 1
+
+        # 要素数が増えなくなったら終了
+        if current_link_count == prev_link_count:
+            print(f"   ✓ 全要素を読み込みました（{current_link_count}件のリンク）")
+            break
+
+        if scroll_attempts % 5 == 0:
+            print(f"   スクロール {scroll_attempts} 回目... リンク数: {current_link_count}")
+
+        prev_link_count = current_link_count
 
     # 一番下まで到達
     driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
     time.sleep(3)
 
-    # ゆっくり上にスクロール（小刻みに）
-    print("   📜 上方向にゆっくりスクロール...")
-    for i in range(10):  # 10回に分けてスクロール
-        driver.execute_script(f"window.scrollBy(0, -{500 * (i + 1)});")
-        time.sleep(1.5)  # 各スクロール後に待機
-
-    # 最後に一番上に戻る
+    # 一番上に戻る
     driver.execute_script("window.scrollTo(0, 0);")
     print("⏳ 最終確認のため上部要素を待機中...")
-    time.sleep(5)  # 上部要素が確実にDOMに含まれるまで待つ
+    time.sleep(5)
 
     # つながりカードを取得（プロフィールリンクから逆算）
     print("\n📊 つながり情報を抽出中...")
