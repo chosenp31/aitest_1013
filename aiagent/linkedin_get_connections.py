@@ -128,27 +128,27 @@ def get_connections(driver, start_date=None):
     time.sleep(8)
 
     # ページを段階的にスクロールして全件読み込み
-    print("📜 ページをスクロール中（全件読み込み）...")
+    print("📜 ページをゆっくりスクロール中（全件読み込み）...")
 
     # まず一番上に確実にスクロール
     driver.execute_script("window.scrollTo(0, 0);")
     time.sleep(3)
 
-    # 下方向に確実にスクロール（固定30回）
-    print("   📜 下方向にスクロール中...")
+    # ゆっくり下にスクロール（自動読み込みを待つ）
+    print("   📜 下方向にゆっくりスクロール中...")
     for i in range(30):
-        # 下にスクロール
-        driver.execute_script("window.scrollBy(0, 800);")
-        time.sleep(1.5)
+        # 少しずつ下にスクロール
+        driver.execute_script("window.scrollBy(0, 500);")
+        time.sleep(3)  # 読み込み待機を長めに
 
-        if (i + 1) % 10 == 0:
+        if (i + 1) % 5 == 0:
             print(f"   スクロール {i + 1} 回目...")
 
     print("   ✓ スクロール完了")
 
-    # 一番下まで到達
+    # 一番下まで到達して最終読み込み
     driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-    time.sleep(3)
+    time.sleep(5)
 
     # 一番上に戻る
     driver.execute_script("window.scrollTo(0, 0);")
