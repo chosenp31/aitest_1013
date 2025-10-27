@@ -104,6 +104,7 @@ SCORING_PROMPT = """
 - 41歳以上は必ず除外（decision: "skip"、total_score: 0）
 - 経営層（社長、CEO、取締役等）は必ず除外（decision: "skip"、total_score: 0）
 - HR・人材関係（リクルーター、採用担当等）は必ず除外（decision: "skip"、total_score: 0）
+- フューチャー株式会社またはフューチャーアーキテクト株式会社に現在勤務している者は必ず除外（decision: "skip"、total_score: 0）
 - 合計スコアが60点以上の場合は "send"、それ未満は "skip"
 """
 
