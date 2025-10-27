@@ -126,8 +126,14 @@ def get_connections(driver, start_date=None):
     driver.get(CONNECTIONS_URL)
     time.sleep(5)
 
-    # ページを下までスクロールして全件読み込み
+    # ページを上下にスクロールして全件読み込み
     print("📜 ページをスクロール中（全件読み込み）...")
+
+    # まず一番上にスクロール（ページ読み込み直後の上部要素を確実に含める）
+    driver.execute_script("window.scrollTo(0, 0);")
+    time.sleep(2)
+
+    # 下までスクロールして全件読み込み
     last_height = driver.execute_script("return document.body.scrollHeight")
     scroll_count = 0
 
@@ -146,6 +152,10 @@ def get_connections(driver, start_date=None):
         last_height = new_height
         scroll_count += 1
         print(f"   スクロール {scroll_count} 回目...")
+
+    # 最後にもう一度上にスクロールして、全体を確実にDOMに含める
+    driver.execute_script("window.scrollTo(0, 0);")
+    time.sleep(2)
 
     # つながりカードを取得（プロフィールリンクから逆算）
     print("\n📊 つながり情報を抽出中...")
