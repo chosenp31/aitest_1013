@@ -164,11 +164,11 @@ def get_connections(driver, start_date=None):
     for (const link of profileLinks) {
         const profileUrl = link.href;
 
-        // 既に処理済みならスキップ
-        if (connectionsMap.has(profileUrl)) continue;
-
         // 名前を取得
         const name = link.textContent.trim();
+
+        // 名前が空のリンク（画像リンクなど）はスキップ
+        if (!name) continue;
 
         // 親要素を遡ってカードを探す（最大15階層）
         let card = link;
@@ -191,13 +191,18 @@ def get_connections(driver, start_date=None):
             }
         }
 
-        // 名前がある場合のみ登録（画像リンクなど名前がないものは除外）
-        if (name && dateText) {
-            connectionsMap.set(profileUrl, {
-                name: name,
-                profileUrl: profileUrl,
-                dateText: dateText
-            });
+        // 日付が見つかった場合のみ登録
+        if (dateText) {
+            // 既存エントリがない、または既存の名前より短い名前の場合は登録/上書き
+            // （短い名前 = "鈴木 祐美子" を優先、長い名前 = "鈴木 祐美子HRBP|..." は除外）
+            const existing = connectionsMap.get(profileUrl);
+            if (!existing || name.length < existing.name.length) {
+                connectionsMap.set(profileUrl, {
+                    name: name,
+                    profileUrl: profileUrl,
+                    dateText: dateText
+                });
+            }
         }
     }
 
