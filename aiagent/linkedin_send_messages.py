@@ -333,65 +333,103 @@ def send_message(driver, profile_url, name, message):
             message_box.click()
             time.sleep(0.5)
 
-            # テキストを入力（JavaScriptで1文字ずつ入力してイベント発火）
-            # send_keysは絵文字に対応していないため、JavaScriptのみを使用
             print(f"   💬 メッセージを入力中...")
 
-            script = """
-            const element = arguments[0];
-            const text = arguments[1];
+            # 絵文字をプレースホルダーに置換（send_keysは絵文字に非対応）
+            emoji_map = {
+                '🙇': '[EMOJI_BOW]',
+                '😊': '[EMOJI_SMILE]',
+                '👍': '[EMOJI_THUMBSUP]',
+                '✨': '[EMOJI_SPARKLE]',
+                '🎯': '[EMOJI_TARGET]',
+            }
 
-            // フォーカスを当てる
-            element.focus();
+            # 絵文字を一時的にプレースホルダーに置換
+            message_safe = message
+            for emoji, placeholder in emoji_map.items():
+                message_safe = message_safe.replace(emoji, placeholder)
 
-            // 既存のテキストをクリア
-            element.innerText = '';
+            try:
+                # send_keysで実際のキーボード入力を模倣（これが最も確実）
+                message_box.send_keys(message_safe)
+                time.sleep(0.5)
+                print(f"   ✅ send_keysでメッセージを入力")
 
-            // 1文字ずつ入力してイベントを発火（キーボード入力を模倣）
-            let currentText = '';
-            const chars = Array.from(text);  // 絵文字にも対応
+                # プレースホルダーを絵文字に戻す
+                script_replace_emoji = """
+                const element = arguments[0];
+                const emojiMap = arguments[1];
 
-            for (let i = 0; i < chars.length; i++) {
-                currentText += chars[i];
-                element.innerText = currentText;
+                let text = element.innerText;
 
-                // 各文字入力後にイベントを発火
+                // プレースホルダーを絵文字に置換
+                for (const [placeholder, emoji] of Object.entries(emojiMap)) {
+                    text = text.replaceAll(placeholder, emoji);
+                }
+
+                element.innerText = text;
+
+                // 変更を通知するためにinputイベントを発火
                 const inputEvent = new InputEvent('input', {
                     bubbles: true,
-                    cancelable: true,
-                    inputType: 'insertText',
-                    data: chars[i]
+                    inputType: 'insertText'
                 });
                 element.dispatchEvent(inputEvent);
 
-                // 最後の文字の後にchangeイベントも発火
-                if (i === chars.length - 1) {
-                    const changeEvent = new Event('change', { bubbles: true });
-                    element.dispatchEvent(changeEvent);
-                }
-            }
+                return true;
+                """
 
-            // 最後にkeyupイベントを発火
-            const keyupEvent = new KeyboardEvent('keyup', { bubbles: true });
-            element.dispatchEvent(keyupEvent);
+                # プレースホルダー→絵文字のマッピング（逆順）
+                placeholder_to_emoji = {placeholder: emoji for emoji, placeholder in emoji_map.items()}
 
-            // blurしてfocusを戻す（変更を確定）
-            element.blur();
-            element.focus();
+                driver.execute_script(script_replace_emoji, message_box, placeholder_to_emoji)
+                time.sleep(0.3)
+                print(f"   ✅ 絵文字をプレースホルダーから復元")
 
-            return true;
-            """
-
-            try:
-                result = driver.execute_script(script, message_box, message)
-                if result:
-                    print(f"   ✅ メッセージを入力")
-                    time.sleep(1)  # 入力後の処理を待つ
-                else:
-                    print(f"   ⚠️ メッセージ入力で予期しない結果")
             except Exception as e:
-                print(f"   ⚠️ メッセージ入力エラー: {e}")
-                return "error", f"メッセージ入力エラー: {e}", "message_input_failed"
+                print(f"   ⚠️ send_keys失敗: {e}、JavaScriptにフォールバック")
+
+                # フォールバック: JavaScriptで入力（以前の方法）
+                script_input = """
+                const element = arguments[0];
+                const text = arguments[1];
+
+                element.focus();
+                element.innerText = '';
+
+                let currentText = '';
+                const chars = Array.from(text);
+
+                for (let i = 0; i < chars.length; i++) {
+                    currentText += chars[i];
+                    element.innerText = currentText;
+
+                    const inputEvent = new InputEvent('input', {
+                        bubbles: true,
+                        cancelable: true,
+                        inputType: 'insertText',
+                        data: chars[i]
+                    });
+                    element.dispatchEvent(inputEvent);
+
+                    if (i === chars.length - 1) {
+                        const changeEvent = new Event('change', { bubbles: true });
+                        element.dispatchEvent(changeEvent);
+                    }
+                }
+
+                const keyupEvent = new KeyboardEvent('keyup', { bubbles: true });
+                element.dispatchEvent(keyupEvent);
+
+                element.blur();
+                element.focus();
+
+                return true;
+                """
+
+                result = driver.execute_script(script_input, message_box, message)
+                if result:
+                    print(f"   ✅ JavaScriptでメッセージを入力")
 
             # 送信ボタンが活性化されるまで少し待つ
             time.sleep(1.5)
