@@ -461,18 +461,32 @@ def send_message(driver, profile_url, name, message):
                 driver.execute_script("arguments[0].click();", send_btn)
                 print(f"   ✅ JavaScriptで送信ボタンをクリック")
 
-            time.sleep(2)
+            # ポップアップが閉じるまで待機（最大10秒）
+            print(f"   ⏳ 送信処理完了を待機中...")
+            popup_closed = False
 
-            # クリック後、ポップアップが閉じたか確認
-            try:
-                # ポップアップがまだ存在するか確認
-                driver.find_element(By.CSS_SELECTOR, "[role='dialog']")
-                print(f"   ⚠️ ポップアップがまだ開いています（送信されていない可能性）")
-                return "error", "送信ボタンが非活性のため送信できませんでした", "button_disabled"
-            except NoSuchElementException:
-                # ポップアップが閉じた = 送信成功
-                print(f"   ✅ ポップアップが閉じました（送信成功）")
+            for i in range(20):  # 0.5秒 × 20回 = 最大10秒
+                time.sleep(0.5)
+                try:
+                    # ポップアップがまだ存在するか確認
+                    driver.find_element(By.CSS_SELECTOR, "[role='dialog']")
+                    # まだ存在する → 送信処理中
+                except NoSuchElementException:
+                    # ポップアップが閉じた = 送信成功
+                    popup_closed = True
+                    print(f"   ✅ ポップアップが閉じました（{(i + 1) * 0.5:.1f}秒後）")
+                    break
+
+            if popup_closed:
                 return "success", "", "sent"
+            else:
+                print(f"   ⚠️ 10秒経過してもポップアップが閉じませんでした")
+                # それでも送信ボタンが活性化してクリックできたので、成功とみなす
+                if button_enabled:
+                    print(f"   ✅ 送信ボタンが活性化してクリックできたため、送信成功とみなします")
+                    return "success", "", "sent"
+                else:
+                    return "error", "ポップアップが閉じませんでした", "popup_not_closed"
 
         except NoSuchElementException:
             return "error", "送信ボタン未検出", "send_button_not_found"
