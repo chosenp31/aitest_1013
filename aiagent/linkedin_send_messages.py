@@ -461,32 +461,39 @@ def send_message(driver, profile_url, name, message):
                 driver.execute_script("arguments[0].click();", send_btn)
                 print(f"   ✅ JavaScriptで送信ボタンをクリック")
 
-            # ポップアップが閉じるまで待機（最大10秒）
-            print(f"   ⏳ 送信処理完了を待機中...")
-            popup_closed = False
+            # 送信処理が完了するまで少し待機
+            time.sleep(2)
 
-            for i in range(20):  # 0.5秒 × 20回 = 最大10秒
-                time.sleep(0.5)
+            # 送信が成功したとみなす（ボタンが活性化してクリックできた）
+            if button_enabled:
+                print(f"   ✅ 送信処理完了")
+
+                # ポップアップを明示的に閉じる（次の送信のため）
                 try:
-                    # ポップアップがまだ存在するか確認
-                    driver.find_element(By.CSS_SELECTOR, "[role='dialog']")
-                    # まだ存在する → 送信処理中
-                except NoSuchElementException:
-                    # ポップアップが閉じた = 送信成功
-                    popup_closed = True
-                    print(f"   ✅ ポップアップが閉じました（{(i + 1) * 0.5:.1f}秒後）")
-                    break
+                    # 戦略1: Escapeキーでポップアップを閉じる
+                    from selenium.webdriver.common.keys import Keys
+                    message_box.send_keys(Keys.ESCAPE)
+                    time.sleep(1)
+                    print(f"   ✅ ポップアップを閉じました（Escape）")
+                except Exception as e1:
+                    print(f"   ⚠️ Escapeで閉じる失敗: {e1}")
 
-            if popup_closed:
+                    # 戦略2: 閉じるボタン（X）をクリック
+                    try:
+                        close_btn = driver.find_element(
+                            By.XPATH,
+                            "//div[@role='dialog']//button[contains(@aria-label, '閉じる') or contains(@aria-label, 'Dismiss') or contains(@aria-label, 'Close')]"
+                        )
+                        close_btn.click()
+                        time.sleep(1)
+                        print(f"   ✅ ポップアップを閉じました（閉じるボタン）")
+                    except Exception as e2:
+                        print(f"   ⚠️ 閉じるボタンでの終了失敗: {e2}")
+                        # ポップアップを閉じられなくてもエラーにはしない（次のプロフィール移動で自動的に閉じる可能性）
+
                 return "success", "", "sent"
             else:
-                print(f"   ⚠️ 10秒経過してもポップアップが閉じませんでした")
-                # それでも送信ボタンが活性化してクリックできたので、成功とみなす
-                if button_enabled:
-                    print(f"   ✅ 送信ボタンが活性化してクリックできたため、送信成功とみなします")
-                    return "success", "", "sent"
-                else:
-                    return "error", "ポップアップが閉じませんでした", "popup_not_closed"
+                return "error", "送信ボタンが活性化されませんでした", "button_not_enabled"
 
         except NoSuchElementException:
             return "error", "送信ボタン未検出", "send_button_not_found"
