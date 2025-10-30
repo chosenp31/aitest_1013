@@ -198,40 +198,87 @@ def send_message(driver, profile_url, name, message):
     try:
         # プロフィールページへ移動
         driver.get(profile_url)
-        time.sleep(4)
 
-        # 「メッセージ」ボタンを探す
+        # ページの読み込み完了を待機
+        time.sleep(3)
+
+        # ページを下にスクロールしてボタンを表示領域に入れる
+        driver.execute_script("window.scrollTo(0, 400);")
+        time.sleep(1)
+
+        # 「メッセージ」ボタンを探す（明示的な待機付き）
         try:
-            # 複数のセレクター戦略
             message_btn = None
 
-            # 戦略1: aria-labelで検索
+            # 戦略1: WebDriverWaitでaria-labelを待機
             try:
-                message_btn = driver.find_element(
-                    By.XPATH,
-                    "//button[contains(@aria-label, 'メッセージ') or contains(@aria-label, 'Message')]"
+                message_btn = WebDriverWait(driver, 15).until(
+                    EC.presence_of_element_located((
+                        By.XPATH,
+                        "//button[contains(@aria-label, 'メッセージ') or contains(@aria-label, 'Message')]"
+                    ))
                 )
-            except NoSuchElementException:
+                print(f"   ✅ メッセージボタン検出（戦略1: aria-label）")
+            except TimeoutException:
                 pass
 
             # 戦略2: テキストで検索
             if not message_btn:
                 try:
-                    message_btn = driver.find_element(
-                        By.XPATH,
-                        "//button[contains(., 'メッセージ') or contains(., 'Message')]"
+                    message_btn = WebDriverWait(driver, 5).until(
+                        EC.presence_of_element_located((
+                            By.XPATH,
+                            "//button[contains(., 'メッセージ') or contains(., 'Message')]"
+                        ))
                     )
-                except NoSuchElementException:
+                    print(f"   ✅ メッセージボタン検出（戦略2: テキスト）")
+                except TimeoutException:
                     pass
 
+            # 戦略3: 全ボタンをスキャンしてメッセージボタンを探す
             if not message_btn:
-                return "error", "メッセージボタン未検出", "button_not_found"
+                print(f"   ⚠️ 標準戦略で検出できず、全ボタンスキャン開始...")
+                script = """
+                const buttons = Array.from(document.querySelectorAll('button'));
+                for (const btn of buttons) {
+                    const text = btn.textContent.trim();
+                    const ariaLabel = btn.getAttribute('aria-label') || '';
+                    if ((text.includes('メッセージ') || text.includes('Message')) ||
+                        (ariaLabel.includes('メッセージ') || ariaLabel.includes('Message'))) {
+                        return btn;
+                    }
+                }
+                return null;
+                """
+                message_btn = driver.execute_script(script)
+                if message_btn:
+                    print(f"   ✅ メッセージボタン検出（戦略3: 全スキャン）")
+
+            if not message_btn:
+                return "error", "メッセージボタン未検出（全戦略失敗）", "button_not_found"
+
+            # ボタンが表示されるまで待機
+            if not message_btn.is_displayed():
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", message_btn)
+                time.sleep(1)
+
+            # クリック可能になるまで待機
+            try:
+                WebDriverWait(driver, 5).until(
+                    EC.element_to_be_clickable(message_btn)
+                )
+            except TimeoutException:
+                print(f"   ⚠️ ボタンがクリック可能になるまで待機タイムアウト、強制的にクリック試行")
 
             # メッセージボタンをクリック
-            driver.execute_script("arguments[0].scrollIntoView(true);", message_btn)
-            time.sleep(1)
-            message_btn.click()
-            time.sleep(2)
+            try:
+                message_btn.click()
+            except Exception:
+                # 通常クリックが失敗した場合、JavaScriptでクリック
+                driver.execute_script("arguments[0].click();", message_btn)
+
+            time.sleep(3)
+            print(f"   ✅ メッセージボタンをクリック")
 
         except Exception as e:
             return "error", f"ボタンクリックエラー: {e}", "button_click_failed"
