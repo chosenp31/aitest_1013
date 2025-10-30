@@ -333,42 +333,68 @@ def send_message(driver, profile_url, name, message):
             message_box.click()
             time.sleep(0.5)
 
-            # テキストを入力（JavaScriptでイベント発火付き）
-            try:
-                # 方法1: send_keysを試す（最も自然）
-                message_box.send_keys(message)
-                time.sleep(0.5)
-            except Exception as e:
-                print(f"   ⚠️ send_keys失敗: {e}、JavaScriptで入力します")
-                # 方法2: JavaScriptで入力 + イベント発火
-                script = """
-                const element = arguments[0];
-                const text = arguments[1];
+            # テキストを入力（JavaScriptで1文字ずつ入力してイベント発火）
+            # send_keysは絵文字に対応していないため、JavaScriptのみを使用
+            print(f"   💬 メッセージを入力中...")
 
-                // テキストを設定
-                element.innerText = text;
+            script = """
+            const element = arguments[0];
+            const text = arguments[1];
 
-                // 入力イベントを発火（LinkedInが検知できるように）
-                const inputEvent = new Event('input', { bubbles: true });
+            // フォーカスを当てる
+            element.focus();
+
+            // 既存のテキストをクリア
+            element.innerText = '';
+
+            // 1文字ずつ入力してイベントを発火（キーボード入力を模倣）
+            let currentText = '';
+            const chars = Array.from(text);  // 絵文字にも対応
+
+            for (let i = 0; i < chars.length; i++) {
+                currentText += chars[i];
+                element.innerText = currentText;
+
+                // 各文字入力後にイベントを発火
+                const inputEvent = new InputEvent('input', {
+                    bubbles: true,
+                    cancelable: true,
+                    inputType: 'insertText',
+                    data: chars[i]
+                });
                 element.dispatchEvent(inputEvent);
 
-                const changeEvent = new Event('change', { bubbles: true });
-                element.dispatchEvent(changeEvent);
+                // 最後の文字の後にchangeイベントも発火
+                if (i === chars.length - 1) {
+                    const changeEvent = new Event('change', { bubbles: true });
+                    element.dispatchEvent(changeEvent);
+                }
+            }
 
-                // キーボードイベントも発火
-                const keydownEvent = new KeyboardEvent('keydown', { bubbles: true });
-                element.dispatchEvent(keydownEvent);
+            // 最後にkeyupイベントを発火
+            const keyupEvent = new KeyboardEvent('keyup', { bubbles: true });
+            element.dispatchEvent(keyupEvent);
 
-                const keyupEvent = new KeyboardEvent('keyup', { bubbles: true });
-                element.dispatchEvent(keyupEvent);
-                """
-                driver.execute_script(script, message_box, message)
-                time.sleep(0.5)
+            // blurしてfocusを戻す（変更を確定）
+            element.blur();
+            element.focus();
 
-            print(f"   ✅ メッセージを入力")
+            return true;
+            """
+
+            try:
+                result = driver.execute_script(script, message_box, message)
+                if result:
+                    print(f"   ✅ メッセージを入力")
+                    time.sleep(1)  # 入力後の処理を待つ
+                else:
+                    print(f"   ⚠️ メッセージ入力で予期しない結果")
+            except Exception as e:
+                print(f"   ⚠️ メッセージ入力エラー: {e}")
+                return "error", f"メッセージ入力エラー: {e}", "message_input_failed"
 
             # 送信ボタンが活性化されるまで少し待つ
-            time.sleep(1)
+            time.sleep(1.5)
 
         except TimeoutException:
             return "error", "ポップアップのタイムアウト", "popup_timeout"
