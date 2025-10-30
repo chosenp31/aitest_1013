@@ -39,10 +39,10 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 MAX_MESSAGES = 2  # テスト用: 2件（本番は50件）
 DELAY_RANGE = (3, 6)  # メッセージ間隔（秒）
 
-# メッセージテンプレート
+# メッセージテンプレート（絵文字なし）
 MESSAGE_TEMPLATE = """{name}さん
 
-いきなりすみません🙇
+いきなりすみません
 KPMGコンサルティングの依田と申します。
 
 将来的に人材領域にも関わりたいと考えており、IT・コンサル分野でご活躍されている方々のお話を伺いながら、知見を広げたいと思っています。
@@ -335,56 +335,11 @@ def send_message(driver, profile_url, name, message):
 
             print(f"   💬 メッセージを入力中...")
 
-            # 絵文字をプレースホルダーに置換（send_keysは絵文字に非対応）
-            emoji_map = {
-                '🙇': '[EMOJI_BOW]',
-                '😊': '[EMOJI_SMILE]',
-                '👍': '[EMOJI_THUMBSUP]',
-                '✨': '[EMOJI_SPARKLE]',
-                '🎯': '[EMOJI_TARGET]',
-            }
-
-            # 絵文字を一時的にプレースホルダーに置換
-            message_safe = message
-            for emoji, placeholder in emoji_map.items():
-                message_safe = message_safe.replace(emoji, placeholder)
-
             try:
                 # send_keysで実際のキーボード入力を模倣（これが最も確実）
-                message_box.send_keys(message_safe)
+                message_box.send_keys(message)
                 time.sleep(0.5)
                 print(f"   ✅ send_keysでメッセージを入力")
-
-                # プレースホルダーを絵文字に戻す
-                script_replace_emoji = """
-                const element = arguments[0];
-                const emojiMap = arguments[1];
-
-                let text = element.innerText;
-
-                // プレースホルダーを絵文字に置換
-                for (const [placeholder, emoji] of Object.entries(emojiMap)) {
-                    text = text.replaceAll(placeholder, emoji);
-                }
-
-                element.innerText = text;
-
-                // 変更を通知するためにinputイベントを発火
-                const inputEvent = new InputEvent('input', {
-                    bubbles: true,
-                    inputType: 'insertText'
-                });
-                element.dispatchEvent(inputEvent);
-
-                return true;
-                """
-
-                # プレースホルダー→絵文字のマッピング（逆順）
-                placeholder_to_emoji = {placeholder: emoji for emoji, placeholder in emoji_map.items()}
-
-                driver.execute_script(script_replace_emoji, message_box, placeholder_to_emoji)
-                time.sleep(0.3)
-                print(f"   ✅ 絵文字をプレースホルダーから復元")
 
             except Exception as e:
                 print(f"   ⚠️ send_keys失敗: {e}、JavaScriptにフォールバック")
