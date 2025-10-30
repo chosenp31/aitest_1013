@@ -116,10 +116,50 @@ def get_profile_details(driver, profile_url, name):
         const result = {
             headline: '',
             location: '',
+            is_premium: false,
             experiences: [],
             education: [],
             skills: []
         };
+
+        // LinkedIn Premiumバッジを検出（複数の方法を試行）
+        // 方法1: Premium関連のimg要素
+        const premiumImg = document.querySelector('img[alt*="Premium"], img[src*="premium"]');
+        if (premiumImg) {
+            result.is_premium = true;
+        }
+
+        // 方法2: Premium関連のテキスト
+        if (!result.is_premium) {
+            const allText = document.body.textContent;
+            if (allText.includes('Premium') && allText.includes('会員')) {
+                result.is_premium = true;
+            }
+        }
+
+        // 方法3: オレンジ色の"in"バッジ（SVG）
+        if (!result.is_premium) {
+            const badges = document.querySelectorAll('svg, [role="img"]');
+            badges.forEach(badge => {
+                const ariaLabel = badge.getAttribute('aria-label') || '';
+                const title = badge.getAttribute('title') || '';
+                if (ariaLabel.toLowerCase().includes('premium') ||
+                    title.toLowerCase().includes('premium')) {
+                    result.is_premium = true;
+                }
+            });
+        }
+
+        // 方法4: プロフィールカード内のバッジアイコン
+        if (!result.is_premium) {
+            const profileCard = document.querySelector('.pv-top-card');
+            if (profileCard) {
+                const badge = profileCard.querySelector('[data-test-premium-badge], .premium-badge, .artdeco-entity-lockup__badge');
+                if (badge) {
+                    result.is_premium = true;
+                }
+            }
+        }
 
         // ヘッドライン（現在の職歴・役職）
         const headlineEl = document.querySelector('.text-body-medium.break-words');
@@ -216,6 +256,7 @@ def get_profile_details(driver, profile_url, name):
             'profile_url': profile_url,
             'headline': details.get('headline', ''),
             'location': details.get('location', ''),
+            'is_premium': details.get('is_premium', False),
             'experiences': experiences_str,
             'education': education_str,
             'skills': skills_str
@@ -228,6 +269,7 @@ def get_profile_details(driver, profile_url, name):
             'profile_url': profile_url,
             'headline': '',
             'location': '',
+            'is_premium': False,
             'experiences': '',
             'education': '',
             'skills': ''
@@ -281,8 +323,11 @@ def main():
         results.append(details)
 
         # 簡易表示
+        premium_badge = "🔶 Premium会員" if details.get('is_premium') else ""
         print(f"   ✅ ヘッドライン: {details['headline'][:50]}...")
         print(f"   📍 場所: {details['location']}")
+        if details.get('is_premium'):
+            print(f"   🔶 LinkedIn Premium会員")
         print(f"   💼 職歴: {len(details['experiences'].split(chr(10)) if details['experiences'] else [])} 件")
         print(f"   🎓 学歴: {len(details['education'].split(chr(10)) if details['education'] else [])} 件")
         print(f"   🔧 スキル: {len(details['skills'].split(',') if details['skills'] else [])} 件\n")
@@ -298,7 +343,7 @@ def main():
     print(f"{'='*70}")
 
     with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
-        fieldnames = ["name", "profile_url", "headline", "location", "experiences", "education", "skills"]
+        fieldnames = ["name", "profile_url", "headline", "location", "is_premium", "experiences", "education", "skills"]
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(results)

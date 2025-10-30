@@ -46,6 +46,7 @@ SCORING_PROMPT = """
 名前: {name}
 ヘッドライン: {headline}
 場所: {location}
+LinkedIn Premium会員: {is_premium}
 職歴:
 {experiences}
 
@@ -80,6 +81,7 @@ SCORING_PROMPT = """
      - HR・人材関係: 人材紹介, 人材派遣, リクルーター, 採用担当, ヘッドハンター, キャリアアドバイザー, 人事コンサルタント
 
 4. その他の除外条件（即座にスコア0、decision: "skip"）
+   - LinkedIn Premium会員（is_premium: "True"または"yes"の場合）
    - 学生（在学中）
    - IT業界と無関係（飲食、販売、製造、小売など）
    - 現在以下の企業に勤務している者:
@@ -101,6 +103,7 @@ SCORING_PROMPT = """
 }}
 
 【重要な注意事項】
+- LinkedIn Premium会員（is_premium: "True"または"yes"）は必ず除外（decision: "skip"、total_score: 0）
 - 41歳以上は必ず除外（decision: "skip"、total_score: 0）
 - 経営層（社長、CEO、取締役等）は必ず除外（decision: "skip"、total_score: 0）
 - HR・人材関係（リクルーター、採用担当等）は必ず除外（decision: "skip"、total_score: 0）
@@ -117,6 +120,9 @@ def score_candidate(candidate):
     name = candidate.get("name", "不明")
     headline = candidate.get("headline", "情報なし")
     location = candidate.get("location", "情報なし")
+    is_premium = candidate.get("is_premium", False)
+    # BooleanをYes/Noに変換
+    is_premium_str = "yes" if str(is_premium).lower() in ['true', 'yes', '1'] else "no"
     experiences = candidate.get("experiences", "情報なし")
     education = candidate.get("education", "情報なし")
     skills = candidate.get("skills", "情報なし")
@@ -126,6 +132,7 @@ def score_candidate(candidate):
         name=name,
         headline=headline,
         location=location,
+        is_premium=is_premium_str,
         experiences=experiences,
         education=education,
         skills=skills
