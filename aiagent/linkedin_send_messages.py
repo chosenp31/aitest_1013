@@ -236,30 +236,107 @@ def send_message(driver, profile_url, name, message):
         except Exception as e:
             return "error", f"ボタンクリックエラー: {e}", "button_click_failed"
 
-        # メッセージ入力欄を探す
+        # メッセージ入力欄を探す（ポップアップ内）
         try:
-            # メッセージボックスが表示されるまで待機
-            message_box = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "div.msg-form__contenteditable"))
+            # ポップアップのダイアログが表示されるまで待機
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "[role='dialog']"))
             )
+            time.sleep(1)
+
+            # ポップアップ内のcontenteditable要素を探す
+            # 複数の戦略を試行
+            message_box = None
+
+            # 戦略1: role="dialog"内のcontenteditable
+            try:
+                message_box = driver.find_element(
+                    By.CSS_SELECTOR,
+                    "[role='dialog'] [contenteditable='true']"
+                )
+            except NoSuchElementException:
+                pass
+
+            # 戦略2: div[contenteditable="true"][role="textbox"]
+            if not message_box:
+                try:
+                    message_box = driver.find_element(
+                        By.CSS_SELECTOR,
+                        "div[contenteditable='true'][role='textbox']"
+                    )
+                except NoSuchElementException:
+                    pass
+
+            # 戦略3: XPathで探す
+            if not message_box:
+                try:
+                    message_box = driver.find_element(
+                        By.XPATH,
+                        "//div[@contenteditable='true' and @role='textbox']"
+                    )
+                except NoSuchElementException:
+                    pass
+
+            if not message_box:
+                return "error", "メッセージ入力欄が見つかりません", "message_box_not_found"
 
             # メッセージを入力
+            driver.execute_script("arguments[0].focus();", message_box)
+            time.sleep(0.5)
             message_box.click()
             time.sleep(0.5)
-            message_box.send_keys(message)
+
+            # テキストを入力（send_keysとJavaScriptの両方を試す）
+            try:
+                message_box.send_keys(message)
+            except Exception:
+                # send_keysが失敗した場合、JavaScriptで直接入力
+                driver.execute_script("arguments[0].innerText = arguments[1];", message_box, message)
+
             time.sleep(1)
 
         except TimeoutException:
-            return "error", "メッセージ入力欄のタイムアウト", "message_box_timeout"
+            return "error", "ポップアップのタイムアウト", "popup_timeout"
         except Exception as e:
             return "error", f"メッセージ入力エラー: {e}", "message_input_failed"
 
-        # 送信ボタンをクリック
+        # 送信ボタンをクリック（ポップアップ内）
         try:
-            send_btn = driver.find_element(
-                By.XPATH,
-                "//button[contains(@class, 'msg-form__send-button')]"
-            )
+            # ポップアップ内の送信ボタンを探す
+            send_btn = None
+
+            # 戦略1: ポップアップ内のaria-labelで検索
+            try:
+                send_btn = driver.find_element(
+                    By.XPATH,
+                    "//div[@role='dialog']//button[contains(@aria-label, '送信') or contains(@aria-label, 'Send')]"
+                )
+            except NoSuchElementException:
+                pass
+
+            # 戦略2: テキストで検索
+            if not send_btn:
+                try:
+                    send_btn = driver.find_element(
+                        By.XPATH,
+                        "//div[@role='dialog']//button[contains(., '送信') or contains(., 'Send')]"
+                    )
+                except NoSuchElementException:
+                    pass
+
+            # 戦略3: クラス名で検索（フォールバック）
+            if not send_btn:
+                try:
+                    send_btn = driver.find_element(
+                        By.XPATH,
+                        "//button[contains(@class, 'msg-form__send-button')]"
+                    )
+                except NoSuchElementException:
+                    pass
+
+            if not send_btn:
+                return "error", "送信ボタンが見つかりません", "send_button_not_found"
+
             send_btn.click()
             time.sleep(2)
 
