@@ -333,13 +333,41 @@ def send_message(driver, profile_url, name, message):
             message_box.click()
             time.sleep(0.5)
 
-            # テキストを入力（send_keysとJavaScriptの両方を試す）
+            # テキストを入力（JavaScriptでイベント発火付き）
             try:
+                # 方法1: send_keysを試す（最も自然）
                 message_box.send_keys(message)
-            except Exception:
-                # send_keysが失敗した場合、JavaScriptで直接入力
-                driver.execute_script("arguments[0].innerText = arguments[1];", message_box, message)
+                time.sleep(0.5)
+            except Exception as e:
+                print(f"   ⚠️ send_keys失敗: {e}、JavaScriptで入力します")
+                # 方法2: JavaScriptで入力 + イベント発火
+                script = """
+                const element = arguments[0];
+                const text = arguments[1];
 
+                // テキストを設定
+                element.innerText = text;
+
+                // 入力イベントを発火（LinkedInが検知できるように）
+                const inputEvent = new Event('input', { bubbles: true });
+                element.dispatchEvent(inputEvent);
+
+                const changeEvent = new Event('change', { bubbles: true });
+                element.dispatchEvent(changeEvent);
+
+                // キーボードイベントも発火
+                const keydownEvent = new KeyboardEvent('keydown', { bubbles: true });
+                element.dispatchEvent(keydownEvent);
+
+                const keyupEvent = new KeyboardEvent('keyup', { bubbles: true });
+                element.dispatchEvent(keyupEvent);
+                """
+                driver.execute_script(script, message_box, message)
+                time.sleep(0.5)
+
+            print(f"   ✅ メッセージを入力")
+
+            # 送信ボタンが活性化されるまで少し待つ
             time.sleep(1)
 
         except TimeoutException:
@@ -384,10 +412,48 @@ def send_message(driver, profile_url, name, message):
             if not send_btn:
                 return "error", "送信ボタンが見つかりません", "send_button_not_found"
 
-            send_btn.click()
+            # 送信ボタンが活性化されるまで待機（最大10秒）
+            print(f"   🔍 送信ボタンの状態を確認中...")
+            button_enabled = False
+
+            for i in range(20):  # 0.5秒 × 20回 = 最大10秒
+                is_disabled = send_btn.get_attribute("disabled")
+                aria_disabled = send_btn.get_attribute("aria-disabled")
+
+                if is_disabled is None and (aria_disabled is None or aria_disabled == "false"):
+                    button_enabled = True
+                    print(f"   ✅ 送信ボタンが活性化されました（{i * 0.5:.1f}秒後）")
+                    break
+
+                time.sleep(0.5)
+
+            if not button_enabled:
+                # 活性化されなくても状態を記録して続行
+                print(f"   ⚠️ 送信ボタンが活性化されません（disabled={is_disabled}, aria-disabled={aria_disabled}）")
+                print(f"   ⚠️ 強制的にクリックを試みます")
+
+            # 送信ボタンをクリック
+            try:
+                send_btn.click()
+                print(f"   ✅ 送信ボタンをクリック")
+            except Exception as click_error:
+                print(f"   ⚠️ 通常クリック失敗: {click_error}")
+                # JavaScriptで強制クリック
+                driver.execute_script("arguments[0].click();", send_btn)
+                print(f"   ✅ JavaScriptで送信ボタンをクリック")
+
             time.sleep(2)
 
-            return "success", "", "sent"
+            # クリック後、ポップアップが閉じたか確認
+            try:
+                # ポップアップがまだ存在するか確認
+                driver.find_element(By.CSS_SELECTOR, "[role='dialog']")
+                print(f"   ⚠️ ポップアップがまだ開いています（送信されていない可能性）")
+                return "error", "送信ボタンが非活性のため送信できませんでした", "button_disabled"
+            except NoSuchElementException:
+                # ポップアップが閉じた = 送信成功
+                print(f"   ✅ ポップアップが閉じました（送信成功）")
+                return "success", "", "sent"
 
         except NoSuchElementException:
             return "error", "送信ボタン未検出", "send_button_not_found"
