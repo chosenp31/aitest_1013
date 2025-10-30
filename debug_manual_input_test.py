@@ -5,6 +5,7 @@ import os
 import time
 import pickle
 import json
+import csv
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
@@ -18,6 +19,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 COOKIE_FILE = os.path.join(DATA_DIR, "cookies.pkl")
 SCORED_FILE = os.path.join(DATA_DIR, "scored_connections.json")
+MESSAGES_FILE = os.path.join(DATA_DIR, "messages_v2.csv")
 
 def login():
     """LinkedInにログイン"""
@@ -59,24 +61,38 @@ def login():
 def test_manual_input(driver):
     """メッセージボタン押下後に停止して手動入力テスト"""
 
-    # スコアファイルから最初のプロフィールを取得
-    if not os.path.exists(SCORED_FILE):
-        print("❌ scored_connections.json が見つかりません")
-        return
+    # 送信対象ファイルから最初のプロフィールを取得
+    profile_url = None
+    name = "不明"
 
-    with open(SCORED_FILE, "r", encoding="utf-8") as f:
-        scored = json.load(f)
+    # 優先順位1: messages_v2.csv
+    if os.path.exists(MESSAGES_FILE):
+        print(f"📂 {MESSAGES_FILE} から読み込み中...\n")
+        with open(MESSAGES_FILE, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            targets = list(reader)
+            if targets:
+                target = targets[0]
+                profile_url = target.get("profile_url")
+                name = target.get("name", "不明")
 
-    # "send" のターゲットを取得
-    targets = [s for s in scored if s.get("decision") == "send"]
+    # 優先順位2: scored_connections.json
+    elif os.path.exists(SCORED_FILE):
+        print(f"📂 {SCORED_FILE} から読み込み中...\n")
+        with open(SCORED_FILE, "r", encoding="utf-8") as f:
+            scored = json.load(f)
+            targets = [s for s in scored if s.get("decision") == "send"]
+            if targets:
+                target = targets[0]
+                profile_url = target.get("profile_url")
+                name = target.get("name", "不明")
 
-    if not targets:
+    if not profile_url:
         print("❌ 送信対象が見つかりません")
+        print(f"💡 以下のいずれかのファイルが必要です:")
+        print(f"   - {MESSAGES_FILE}")
+        print(f"   - {SCORED_FILE}")
         return
-
-    target = targets[0]
-    profile_url = target.get("profile_url")
-    name = target.get("name", "不明")
 
     print(f"\n{'='*70}")
     print(f"🧪 手動入力テスト")
