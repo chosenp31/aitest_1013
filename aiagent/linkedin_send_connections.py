@@ -211,7 +211,7 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
 
             # ボタンをクリック
             try:
-                # JavaScriptで直接クリック
+                # JavaScriptで直接クリック（詳細情報付き）
                 click_script = f"""
                 const allLis = document.querySelectorAll('li');
                 let candidateIndex = 0;
@@ -256,23 +256,46 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
                     }}
                 }}
 
-                if (!targetCard) return false;
+                // デバッグ情報を含む結果オブジェクト
+                const result = {{
+                    success: false,
+                    cardFound: !!targetCard,
+                    buttonCount: 0,
+                    buttonTexts: [],
+                    connectButtonFound: false
+                }};
 
-                // つながり申請ボタンをクリック
+                if (!targetCard) {{
+                    return result;
+                }}
+
+                // つながり申請ボタンを探してクリック
                 const buttons = targetCard.querySelectorAll('button');
+                result.buttonCount = buttons.length;
+
                 for (const btn of buttons) {{
                     const text = btn.textContent.trim();
+                    result.buttonTexts.push(text);
+
                     if (text.includes('つながりを申請') || text.includes('Connect')) {{
+                        result.connectButtonFound = true;
+
+                        // ボタンをスクロールして表示
+                        btn.scrollIntoView({{ block: 'center', behavior: 'instant' }});
+
+                        // クリック
                         btn.click();
-                        return true;
+                        result.success = true;
+                        break;
                     }}
                 }}
-                return false;
+
+                return result;
                 """
 
-                clicked = driver.execute_script(click_script)
+                result = driver.execute_script(click_script)
 
-                if clicked:
+                if result['success']:
                     time.sleep(1)
 
                     # モーダルが出た場合は「送信」をクリック
@@ -292,8 +315,18 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
                     delay = random.uniform(*DELAY_RANGE)
                     time.sleep(delay)
                 else:
-                    print(f"   ❌ {name} - ボタンクリック失敗")
-                    log_request(name, "error", "click_failed")
+                    # 失敗の詳細を表示
+                    if not result['cardFound']:
+                        error_msg = "候補者カードが見つからない"
+                    elif result['buttonCount'] == 0:
+                        error_msg = "ボタンが0個"
+                    elif not result['connectButtonFound']:
+                        error_msg = f"つながり申請ボタンなし (ボタン: {', '.join(result['buttonTexts'][:3])})"
+                    else:
+                        error_msg = "クリック実行失敗"
+
+                    print(f"   ❌ {name} - {error_msg}")
+                    log_request(name, "error", error_msg)
 
             except Exception as e:
                 print(f"   ❌ {name} - エラー: {e}")
