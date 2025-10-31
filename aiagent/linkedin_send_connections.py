@@ -26,8 +26,6 @@ COOKIE_FILE = os.path.join(DATA_DIR, "cookies.pkl")
 
 os.makedirs(DATA_DIR, exist_ok=True)
 
-MAX_PAGES = 1  # 最大ページ数（テスト用: 1ページ）
-MAX_REQUESTS = 5  # テスト用: 最大5件
 DELAY_RANGE = (2, 4)  # クリック間隔（秒）
 
 # ==============================
@@ -167,8 +165,8 @@ def send_connections_on_page(driver, current_total=0):
 
         for candidate in candidates:
             # 上限に達したらループを抜ける
-            if current_total + success_count >= MAX_REQUESTS:
-                print(f"\n   ⚠️  上限{MAX_REQUESTS}件に達しました。処理を終了します。")
+            if current_total + success_count >= max_requests:
+                print(f"\n   ⚠️  上限{max_requests}件に達しました。処理を終了します。")
                 break
 
             name = candidate['name']
@@ -236,7 +234,7 @@ def send_connections_on_page(driver, current_total=0):
 # ==============================
 # メイン処理
 # ==============================
-def send_connections(keywords, location="Japan", max_pages=MAX_PAGES):
+def send_connections(keywords, location="Japan", max_pages=1, max_requests=5):
     """
     検索結果ページ上で直接つながり申請を送信
 
@@ -244,6 +242,7 @@ def send_connections(keywords, location="Japan", max_pages=MAX_PAGES):
         keywords: 検索キーワード
         location: 地域
         max_pages: 検索ページ数
+        max_requests: 最大申請件数
     """
     driver = login()
 
@@ -256,6 +255,7 @@ def send_connections(keywords, location="Japan", max_pages=MAX_PAGES):
     print(f"   キーワード: {keywords}")
     print(f"   地域: {location}")
     print(f"   ページ数: {max_pages}")
+    print(f"   最大申請件数: {max_requests}")
 
     driver.get(search_url)
     time.sleep(5)
@@ -271,15 +271,15 @@ def send_connections(keywords, location="Japan", max_pages=MAX_PAGES):
         print(f"\n📄 ページ {page}/{max_pages} を処理中...")
 
         # 現在のページで申請
-        success, skip = send_connections_on_page(driver, total_success)
+        success, skip = send_connections_on_page(driver, total_success, max_requests)
         total_success += success
         total_skip += skip
 
         print(f"   このページ: 成功{success}件、スキップ{skip}件")
 
         # 上限に達したらループを抜ける
-        if total_success >= MAX_REQUESTS:
-            print(f"\n✅ 目標{MAX_REQUESTS}件に達しました。")
+        if total_success >= max_requests:
+            print(f"\n✅ 目標{max_requests}件に達しました。")
             break
 
         # 次ページへ
@@ -323,14 +323,67 @@ def send_connections(keywords, location="Japan", max_pages=MAX_PAGES):
 # エントリポイント
 # ==============================
 if __name__ == "__main__":
-    import sys
+    print(f"\n{'='*70}")
+    print(f"🤝 LinkedIn つながり申請")
+    print(f"{'='*70}\n")
 
-    if len(sys.argv) > 1:
-        keywords = sys.argv[1]
-    else:
+    # 検索キーワード
+    print("【検索キーワード】")
+    keywords = input("検索キーワードを入力 (Enter=デフォルト「SIer OR エンジニア OR ITコンサルタント」): ").strip()
+    if not keywords:
         keywords = "SIer OR エンジニア OR ITコンサルタント"
 
-    location = sys.argv[2] if len(sys.argv) > 2 else "Japan"
-    max_pages = int(sys.argv[3]) if len(sys.argv) > 3 else MAX_PAGES
+    # 地域
+    print("\n【地域】")
+    location = input("地域を入力 (Enter=デフォルト「Japan」): ").strip()
+    if not location:
+        location = "Japan"
 
-    send_connections(keywords, location, max_pages)
+    # 最大ページ数
+    print("\n【最大ページ数】")
+    while True:
+        max_pages_input = input("検索結果の最大ページ数を入力 (Enter=デフォルト「1」): ").strip()
+        if not max_pages_input:
+            max_pages = 1
+            break
+        try:
+            max_pages = int(max_pages_input)
+            if max_pages > 0:
+                break
+            else:
+                print("⚠️ 1以上の数値を入力してください")
+        except ValueError:
+            print("⚠️ 数値を入力してください")
+
+    # 最大申請件数
+    print("\n【最大申請件数】")
+    while True:
+        max_requests_input = input("最大申請件数を入力 (Enter=デフォルト「5」): ").strip()
+        if not max_requests_input:
+            max_requests = 5
+            break
+        try:
+            max_requests = int(max_requests_input)
+            if max_requests > 0:
+                break
+            else:
+                print("⚠️ 1以上の数値を入力してください")
+        except ValueError:
+            print("⚠️ 数値を入力してください")
+
+    # 確認
+    print(f"\n{'='*70}")
+    print(f"📋 設定内容")
+    print(f"{'='*70}")
+    print(f"キーワード: {keywords}")
+    print(f"地域: {location}")
+    print(f"最大ページ数: {max_pages}")
+    print(f"最大申請件数: {max_requests}")
+    print(f"{'='*70}\n")
+
+    confirm = input("この設定で実行しますか？ (yes/no): ").strip().lower()
+    if confirm != 'yes':
+        print("\n❌ 処理をキャンセルしました\n")
+        exit(0)
+
+    send_connections(keywords, location, max_pages, max_requests)
