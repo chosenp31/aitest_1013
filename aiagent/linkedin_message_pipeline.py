@@ -43,11 +43,6 @@ os.makedirs(DATA_DIR, exist_ok=True)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
-# パラメータ
-START_DATE = "2025-10-27"  # つながり取得の開始日（この日以降のつながりを対象）
-MIN_SCORE = 60  # 最低スコア
-MAX_MESSAGES = 2  # テスト用: 2件（本番は50件）
-
 # メッセージテンプレート（絵文字なし）
 MESSAGE_TEMPLATE = """{name}さん
 
@@ -209,13 +204,13 @@ def login():
 # ==============================
 # Step 2: つながり取得
 # ==============================
-def get_connections(driver):
+def get_connections(driver, start_date):
     """つながりリストを取得（日付フィルタ付き）"""
 
     print(f"{'='*70}")
     print(f"📋 Step 2: つながり取得")
     print(f"{'='*70}")
-    print(f"開始日: {START_DATE} 以降")
+    print(f"開始日: {start_date} 以降")
     print(f"{'='*70}\n")
 
     # つながりページへ移動
@@ -295,7 +290,7 @@ def get_connections(driver):
 
     # 日付でフィルタリング
     from datetime import datetime
-    start_date_obj = datetime.strptime(START_DATE, "%Y-%m-%d")
+    start_date_obj = datetime.strptime(start_date, "%Y-%m-%d")
 
     filtered_connections = []
     for conn in connections:
@@ -312,7 +307,7 @@ def get_connections(driver):
                     'connected_date': f"{year}-{month:02d}-{day:02d}"
                 })
 
-    print(f"✅ {len(filtered_connections)} 件のつながりを取得（{START_DATE}以降）\n")
+    print(f"✅ {len(filtered_connections)} 件のつながりを取得（{start_date}以降）\n")
 
     # CSV保存
     with open(CONNECTIONS_FILE, "w", newline="", encoding="utf-8") as f:
@@ -597,14 +592,14 @@ def score_candidate(candidate):
             "reason": f"APIエラー: {e}"
         }
 
-def score_all_candidates(profiles):
+def score_all_candidates(profiles, min_score):
     """全候補者をスコアリング"""
 
     print(f"{'='*70}")
     print(f"🧠 Step 4: AIスコアリング")
     print(f"{'='*70}")
     print(f"候補者数: {len(profiles)} 件")
-    print(f"最低スコア: {MIN_SCORE} 点")
+    print(f"最低スコア: {min_score} 点")
     print(f"{'='*70}\n")
 
     results = []
@@ -635,7 +630,7 @@ def score_all_candidates(profiles):
     print(f"💾 保存完了: {SCORED_FILE}\n")
 
     # 送信対象を抽出してCSV保存
-    send_targets = [r for r in results if r.get('decision') == 'send' and r.get('total_score', 0) >= MIN_SCORE]
+    send_targets = [r for r in results if r.get('decision') == 'send' and r.get('total_score', 0) >= min_score]
 
     if send_targets:
         with open(MESSAGES_FILE, "w", newline="", encoding="utf-8") as f:
@@ -865,18 +860,18 @@ def log_message(name, profile_url, result, error="", details=""):
             "details": details
         })
 
-def send_all_messages(driver, targets):
+def send_all_messages(driver, targets, max_messages):
     """全メッセージを送信"""
 
     print(f"{'='*70}")
     print(f"📨 Step 5-6: メッセージ生成・送信")
     print(f"{'='*70}")
     print(f"送信対象: {len(targets)} 件")
-    print(f"上限: {MAX_MESSAGES} 件")
+    print(f"上限: {max_messages} 件")
     print(f"{'='*70}\n")
 
     # 上限件数まで絞り込み
-    targets = targets[:MAX_MESSAGES]
+    targets = targets[:max_messages]
 
     # メッセージを生成
     print("💬 メッセージを生成中...\n")
@@ -967,7 +962,7 @@ def send_all_messages(driver, targets):
 # ==============================
 # メイン処理
 # ==============================
-def main():
+def main(start_date, min_score, max_messages):
     """メイン処理"""
 
     print(f"\n{'='*70}")
@@ -981,7 +976,7 @@ def main():
 
     try:
         # Step 2: つながり取得
-        connections = get_connections(driver)
+        connections = get_connections(driver, start_date)
 
         if not connections:
             print("⚠️ つながりが見つかりません。処理を終了します。\n")
@@ -995,14 +990,14 @@ def main():
             return
 
         # Step 4: AIスコアリング
-        send_targets = score_all_candidates(profiles)
+        send_targets = score_all_candidates(profiles, min_score)
 
         if not send_targets:
             print("⚠️ 送信対象が0件です。処理を終了します。\n")
             return
 
         # Step 5-6: メッセージ生成・送信
-        send_all_messages(driver, send_targets)
+        send_all_messages(driver, send_targets, max_messages)
 
     except KeyboardInterrupt:
         print("\n\n⚠️ ユーザーによって処理が中断されました\n")
@@ -1024,4 +1019,68 @@ def main():
 # エントリポイント
 # ==============================
 if __name__ == "__main__":
-    main()
+    print(f"\n{'='*70}")
+    print(f"🚀 LinkedIn メッセージ送信パイプライン")
+    print(f"{'='*70}\n")
+
+    # つながり取得の開始日
+    print("【つながり取得の開始日】")
+    start_date_input = input("開始日を入力 (YYYY-MM-DD形式、Enter=デフォルト「2025-10-27」): ").strip()
+    if not start_date_input:
+        start_date = "2025-10-27"
+    else:
+        # 日付形式を検証
+        try:
+            datetime.strptime(start_date_input, "%Y-%m-%d")
+            start_date = start_date_input
+        except ValueError:
+            print("⚠️ 日付形式が正しくありません。デフォルト値を使用します。")
+            start_date = "2025-10-27"
+
+    # 最低スコア
+    print("\n【最低スコア】")
+    while True:
+        min_score_input = input("最低スコアを入力 (Enter=デフォルト「60」): ").strip()
+        if not min_score_input:
+            min_score = 60
+            break
+        try:
+            min_score = int(min_score_input)
+            if min_score >= 0:
+                break
+            else:
+                print("⚠️ 0以上の数値を入力してください")
+        except ValueError:
+            print("⚠️ 数値を入力してください")
+
+    # 最大メッセージ送信数
+    print("\n【最大メッセージ送信数】")
+    while True:
+        max_messages_input = input("最大メッセージ送信数を入力 (Enter=デフォルト「50」): ").strip()
+        if not max_messages_input:
+            max_messages = 50
+            break
+        try:
+            max_messages = int(max_messages_input)
+            if max_messages > 0:
+                break
+            else:
+                print("⚠️ 1以上の数値を入力してください")
+        except ValueError:
+            print("⚠️ 数値を入力してください")
+
+    # 設定内容を確認
+    print(f"\n{'='*70}")
+    print(f"📋 設定内容")
+    print(f"{'='*70}")
+    print(f"つながり取得開始日: {start_date}")
+    print(f"最低スコア: {min_score}点")
+    print(f"最大メッセージ送信数: {max_messages}件")
+    print(f"{'='*70}\n")
+
+    confirm = input("この設定で実行しますか？ (yes/no): ").strip().lower()
+    if confirm != 'yes':
+        print("\n❌ 処理をキャンセルしました\n")
+        exit(0)
+
+    main(start_date, min_score, max_messages)
