@@ -123,35 +123,58 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
 
     # 候補者カードを取得してボタンをクリック
     script = """
-    const candidateCards = document.querySelectorAll('li.qTpSkRrerBcUqHivKtVbqVGnMhgMkDU');
+    const allLis = document.querySelectorAll('li');
     const results = [];
+    let candidateIndex = 0;
 
-    candidateCards.forEach((card, index) => {
-        // 名前を取得
-        let name = '';
-        const nameEl = card.querySelector('span[aria-hidden="true"]');
-        if (nameEl) {
-            name = nameEl.textContent.trim();
+    allLis.forEach((li) => {
+        // ナビゲーション要素やフィルター要素を除外
+        const classes = li.className || '';
+        if (classes.includes('global-nav') ||
+            classes.includes('search-reusables__filter') ||
+            classes.includes('search-reusables__collection-values')) {
+            return;
         }
 
-        // つながり申請ボタンを探す
-        const buttons = card.querySelectorAll('button');
-        let connectBtn = null;
+        // 名前要素（span[aria-hidden="true"]）があるかチェック
+        const nameEl = li.querySelector('span[aria-hidden="true"]');
+        if (!nameEl) return;
+
+        const name = nameEl.textContent.trim();
+        if (!name || name.length < 2) return;
+
+        // ボタンがあるかチェック
+        const buttons = li.querySelectorAll('button');
+        if (buttons.length === 0) return;
+
+        // つながり申請ボタンまたはメッセージボタンがあるか確認
+        let hasConnectButton = false;
+        let hasMessageButton = false;
 
         for (const btn of buttons) {
             const text = btn.textContent.trim();
+            const ariaLabel = btn.getAttribute('aria-label') || '';
+
             if (text.includes('つながりを申請') || text.includes('Connect')) {
-                connectBtn = btn;
+                hasConnectButton = true;
                 break;
+            }
+            if (text.includes('メッセージ') || text.includes('Message') ||
+                ariaLabel.includes('メッセージ') || ariaLabel.includes('message')) {
+                hasMessageButton = true;
             }
         }
 
-        results.push({
-            index: index,
-            name: name,
-            hasConnectButton: !!connectBtn,
-            buttonElement: connectBtn
-        });
+        // つながり申請ボタンまたはメッセージボタンがある場合のみ候補者カードとして扱う
+        if (hasConnectButton || hasMessageButton) {
+            results.push({
+                index: candidateIndex,
+                name: name,
+                hasConnectButton: hasConnectButton,
+                classes: classes
+            });
+            candidateIndex++;
+        }
     });
 
     return results;
@@ -159,6 +182,14 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
 
     try:
         candidates = driver.execute_script(script)
+
+        # 検出結果を表示
+        connect_count = sum(1 for c in candidates if c['hasConnectButton'])
+        already_connected_count = len(candidates) - connect_count
+
+        print(f"   🔍 検出: 候補者{len(candidates)}件")
+        print(f"      - つながり申請可能: {connect_count}件")
+        print(f"      - 既接続: {already_connected_count}件")
 
         success_count = 0
         skip_count = 0
@@ -182,10 +213,53 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
             try:
                 # JavaScriptで直接クリック
                 click_script = f"""
-                const cards = document.querySelectorAll('li.qTpSkRrerBcUqHivKtVbqVGnMhgMkDU');
-                const card = cards[{candidate['index']}];
-                const buttons = card.querySelectorAll('button');
+                const allLis = document.querySelectorAll('li');
+                let candidateIndex = 0;
+                let targetCard = null;
 
+                // 候補者カードを再検索
+                for (const li of allLis) {{
+                    const classes = li.className || '';
+                    if (classes.includes('global-nav') ||
+                        classes.includes('search-reusables__filter') ||
+                        classes.includes('search-reusables__collection-values')) {{
+                        continue;
+                    }}
+
+                    const nameEl = li.querySelector('span[aria-hidden="true"]');
+                    if (!nameEl) continue;
+
+                    const name = nameEl.textContent.trim();
+                    if (!name || name.length < 2) continue;
+
+                    const buttons = li.querySelectorAll('button');
+                    if (buttons.length === 0) continue;
+
+                    let hasRelevantButton = false;
+                    for (const btn of buttons) {{
+                        const text = btn.textContent.trim();
+                        const ariaLabel = btn.getAttribute('aria-label') || '';
+                        if (text.includes('つながりを申請') || text.includes('Connect') ||
+                            text.includes('メッセージ') || text.includes('Message') ||
+                            ariaLabel.includes('メッセージ') || ariaLabel.includes('message')) {{
+                            hasRelevantButton = true;
+                            break;
+                        }}
+                    }}
+
+                    if (hasRelevantButton) {{
+                        if (candidateIndex === {candidate['index']}) {{
+                            targetCard = li;
+                            break;
+                        }}
+                        candidateIndex++;
+                    }}
+                }}
+
+                if (!targetCard) return false;
+
+                // つながり申請ボタンをクリック
+                const buttons = targetCard.querySelectorAll('button');
                 for (const btn of buttons) {{
                     const text = btn.textContent.trim();
                     if (text.includes('つながりを申請') || text.includes('Connect')) {{
