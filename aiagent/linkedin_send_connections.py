@@ -113,7 +113,7 @@ def log_request(name, result, error=""):
 # ==============================
 # 検索結果ページ上でつながり申請
 # ==============================
-def send_connections_on_page(driver, current_total=0):
+def send_connections_on_page(driver, current_total=0, max_requests=50):
     """現在の検索結果ページ上で全ての候補者につながり申請"""
 
     # ページを下までスクロール
@@ -342,9 +342,9 @@ if __name__ == "__main__":
     # 最大ページ数
     print("\n【最大ページ数】")
     while True:
-        max_pages_input = input("検索結果の最大ページ数を入力 (Enter=デフォルト「1」): ").strip()
+        max_pages_input = input("検索結果の最大ページ数を入力 (Enter=デフォルト「5」): ").strip()
         if not max_pages_input:
-            max_pages = 1
+            max_pages = 5
             break
         try:
             max_pages = int(max_pages_input)
@@ -358,9 +358,9 @@ if __name__ == "__main__":
     # 最大申請件数
     print("\n【最大申請件数】")
     while True:
-        max_requests_input = input("最大申請件数を入力 (Enter=デフォルト「5」): ").strip()
+        max_requests_input = input("最大申請件数を入力 (Enter=デフォルト「40」): ").strip()
         if not max_requests_input:
-            max_requests = 5
+            max_requests = 40
             break
         try:
             max_requests = int(max_requests_input)
