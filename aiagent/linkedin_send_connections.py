@@ -211,13 +211,15 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
 
             # ボタンをクリック
             try:
-                # JavaScriptで直接クリック（詳細情報付き）
+                # JavaScriptで直接クリック（名前ベース検索）
+                # シングルクォートをエスケープ
+                safe_name = name.replace("'", "\\'")
+
                 click_script = f"""
                 const allLis = document.querySelectorAll('li');
-                let candidateIndex = 0;
                 let targetCard = null;
 
-                // 候補者カードを再検索
+                // 候補者カードを名前で検索
                 for (const li of allLis) {{
                     const classes = li.className || '';
                     if (classes.includes('global-nav') ||
@@ -229,30 +231,12 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
                     const nameEl = li.querySelector('span[aria-hidden="true"]');
                     if (!nameEl) continue;
 
-                    const name = nameEl.textContent.trim();
-                    if (!name || name.length < 2) continue;
+                    const cardName = nameEl.textContent.trim();
 
-                    const buttons = li.querySelectorAll('button');
-                    if (buttons.length === 0) continue;
-
-                    let hasRelevantButton = false;
-                    for (const btn of buttons) {{
-                        const text = btn.textContent.trim();
-                        const ariaLabel = btn.getAttribute('aria-label') || '';
-                        if (text.includes('つながりを申請') || text.includes('Connect') ||
-                            text.includes('メッセージ') || text.includes('Message') ||
-                            ariaLabel.includes('メッセージ') || ariaLabel.includes('message')) {{
-                            hasRelevantButton = true;
-                            break;
-                        }}
-                    }}
-
-                    if (hasRelevantButton) {{
-                        if (candidateIndex === {candidate['index']}) {{
-                            targetCard = li;
-                            break;
-                        }}
-                        candidateIndex++;
+                    // 名前が一致するかチェック
+                    if (cardName === '{safe_name}') {{
+                        targetCard = li;
+                        break;
                     }}
                 }}
 
