@@ -491,54 +491,97 @@ def send_message(driver, profile_url, name, message):
         except Exception:
             driver.execute_script("arguments[0].click();", send_btn)
 
-        time.sleep(2)
+        # 送信処理の完了を待つ（LinkedInの処理時間）
+        time.sleep(3)
 
         if button_enabled:
             # ポップアップを明示的に閉じる（次の送信のため）
             popup_closed = False
 
-            try:
-                # 戦略1: Escapeキーでポップアップを閉じる
-                message_box.send_keys(Keys.ESCAPE)
-                time.sleep(0.5)
-                print(f"   🔄 Escapeキーでポップアップを閉じています...")
-            except Exception as e:
-                print(f"   ⚠️ Escapeキー失敗: {e}")
-                # 戦略2: 閉じるボタン（X）をクリック
-                try:
-                    close_btn = driver.find_element(
-                        By.XPATH,
-                        "//div[@role='dialog']//button[contains(@aria-label, '閉じる') or contains(@aria-label, 'Dismiss') or contains(@aria-label, 'Close')]"
-                    )
-                    close_btn.click()
-                    time.sleep(0.5)
-                    print(f"   🔄 閉じるボタンでポップアップを閉じています...")
-                except Exception as e2:
-                    print(f"   ⚠️ 閉じるボタンも失敗: {e2}")
+            print(f"   🔄 ポップアップを閉じています...")
 
-            # ポップアップが実際に閉じるまで待機（最大10秒）
-            for i in range(20):  # 0.5秒 × 20回 = 最大10秒
+            # 戦略1: ページ全体（body）にEscapeキーを送信（stale参照を回避）
+            try:
+                body = driver.find_element(By.TAG_NAME, "body")
+                body.send_keys(Keys.ESCAPE)
+                time.sleep(1)
+                print(f"   ✓ Escapeキー送信（body）")
+            except Exception as e:
+                print(f"   ⚠️ Escapeキー失敗（body）: {e}")
+
+            # 戦略2: ポップアップ内の新しい要素にEscapeキーを送信
+            try:
+                dialog = driver.find_element(By.CSS_SELECTOR, "[role='dialog']")
+                dialog.send_keys(Keys.ESCAPE)
+                time.sleep(1)
+                print(f"   ✓ Escapeキー送信（dialog）")
+            except Exception as e:
+                print(f"   ⚠️ Escapeキー失敗（dialog）: {e}")
+
+            # 戦略3: 閉じるボタンをクリック
+            try:
+                close_btn = driver.find_element(
+                    By.XPATH,
+                    "//div[@role='dialog']//button[contains(@aria-label, '閉じる') or contains(@aria-label, 'Dismiss') or contains(@aria-label, 'Close')]"
+                )
+                close_btn.click()
+                time.sleep(1)
+                print(f"   ✓ 閉じるボタンクリック")
+            except Exception as e:
+                print(f"   ⚠️ 閉じるボタン失敗: {e}")
+
+            # ポップアップが実際に閉じるまで待機（最大15秒）
+            for i in range(30):  # 0.5秒 × 30回 = 最大15秒
                 time.sleep(0.5)
                 try:
                     driver.find_element(By.CSS_SELECTOR, "[role='dialog']")
-                    # まだ存在する → 送信処理中
+                    # まだ存在する
                 except NoSuchElementException:
-                    # ポップアップが閉じた = 送信成功
+                    # ポップアップが閉じた
                     popup_closed = True
                     print(f"   ✅ ポップアップが閉じました（{(i + 1) * 0.5:.1f}秒後）")
                     break
 
+            # それでも閉じない場合は強制削除
             if not popup_closed:
-                print(f"   ⚠️ ポップアップが閉じませんでした（タイムアウト）")
-                # 強制的に閉じる試み
+                print(f"   ⚠️ ポップアップが閉じません。強制削除を実行します...")
+
+                # 戦略4: より強力なJavaScript削除
                 try:
                     driver.execute_script("""
+                        // すべてのダイアログを削除
                         const dialogs = document.querySelectorAll('[role="dialog"]');
-                        dialogs.forEach(d => d.remove());
+                        dialogs.forEach(d => {
+                            d.remove();
+                            console.log('Dialog removed');
+                        });
+
+                        // モーダルのオーバーレイも削除
+                        const overlays = document.querySelectorAll('.msg-overlay-bubble-header, .msg-overlay-list-bubble, [class*="msg-overlay"]');
+                        overlays.forEach(o => {
+                            o.remove();
+                            console.log('Overlay removed');
+                        });
+
+                        // bodyのスタイルをリセット（モーダル表示時に変更されることがある）
+                        document.body.style.overflow = 'auto';
                     """)
-                    print(f"   🔄 JavaScriptでポップアップを強制削除しました")
+                    time.sleep(1)
+                    print(f"   🔄 JavaScript強制削除完了")
+
+                    # 再度確認
+                    try:
+                        driver.find_element(By.CSS_SELECTOR, "[role='dialog']")
+                        print(f"   ❌ 強制削除後もポップアップが残っています")
+                    except NoSuchElementException:
+                        popup_closed = True
+                        print(f"   ✅ 強制削除成功")
+
                 except Exception as e:
-                    print(f"   ❌ 強制削除も失敗: {e}")
+                    print(f"   ❌ 強制削除失敗: {e}")
+
+            # 次のメッセージ送信前の追加待機
+            time.sleep(2)
 
             return "success", "", "sent"
         else:
