@@ -494,20 +494,51 @@ def send_message(driver, profile_url, name, message):
         time.sleep(2)
 
         if button_enabled:
-            # ポップアップを閉じる
+            # ポップアップを明示的に閉じる（次の送信のため）
+            popup_closed = False
+
             try:
+                # 戦略1: Escapeキーでポップアップを閉じる
                 message_box.send_keys(Keys.ESCAPE)
-                time.sleep(1)
-            except Exception:
+                time.sleep(0.5)
+                print(f"   🔄 Escapeキーでポップアップを閉じています...")
+            except Exception as e:
+                print(f"   ⚠️ Escapeキー失敗: {e}")
+                # 戦略2: 閉じるボタン（X）をクリック
                 try:
                     close_btn = driver.find_element(
                         By.XPATH,
                         "//div[@role='dialog']//button[contains(@aria-label, '閉じる') or contains(@aria-label, 'Dismiss') or contains(@aria-label, 'Close')]"
                     )
                     close_btn.click()
-                    time.sleep(1)
-                except Exception:
-                    pass
+                    time.sleep(0.5)
+                    print(f"   🔄 閉じるボタンでポップアップを閉じています...")
+                except Exception as e2:
+                    print(f"   ⚠️ 閉じるボタンも失敗: {e2}")
+
+            # ポップアップが実際に閉じるまで待機（最大10秒）
+            for i in range(20):  # 0.5秒 × 20回 = 最大10秒
+                time.sleep(0.5)
+                try:
+                    driver.find_element(By.CSS_SELECTOR, "[role='dialog']")
+                    # まだ存在する → 送信処理中
+                except NoSuchElementException:
+                    # ポップアップが閉じた = 送信成功
+                    popup_closed = True
+                    print(f"   ✅ ポップアップが閉じました（{(i + 1) * 0.5:.1f}秒後）")
+                    break
+
+            if not popup_closed:
+                print(f"   ⚠️ ポップアップが閉じませんでした（タイムアウト）")
+                # 強制的に閉じる試み
+                try:
+                    driver.execute_script("""
+                        const dialogs = document.querySelectorAll('[role="dialog"]');
+                        dialogs.forEach(d => d.remove());
+                    """)
+                    print(f"   🔄 JavaScriptでポップアップを強制削除しました")
+                except Exception as e:
+                    print(f"   ❌ 強制削除も失敗: {e}")
 
             return "success", "", "sent"
         else:
