@@ -344,13 +344,13 @@ def send_connections(account_name, paths, keywords, location="Japan", max_pages=
     """
     driver = login(account_name, paths['cookie_file'])
 
-    # 検索URL構築（2次のつながりのみに絞る）
-    search_url = f"https://www.linkedin.com/search/results/people/?keywords={keywords}&origin=GLOBAL_SEARCH_HEADER"
+    # 検索URLベース構築（2次のつながりのみに絞る）
+    search_url_base = f"https://www.linkedin.com/search/results/people/?keywords={keywords}&origin=GLOBAL_SEARCH_HEADER"
     if location:
-        search_url += f"&location={location}"
+        search_url_base += f"&location={location}"
 
     # 2次のつながりフィルターを追加（1次のつながりを除外）
-    search_url += "&network=%5B%22S%22%5D"
+    search_url_base += "&network=%5B%22S%22%5D"
 
     print(f"\n🔎 検索条件:")
     print(f"   アカウント: {account_name}")
@@ -359,9 +359,6 @@ def send_connections(account_name, paths, keywords, location="Japan", max_pages=
     print(f"   つながりレベル: 2次のみ（1次は除外）")
     print(f"   ページ数: {max_pages}")
     print(f"   最大申請件数: {max_requests}")
-
-    driver.get(search_url)
-    time.sleep(5)
 
     print(f"\n{'='*70}")
     print(f"📊 つながり申請開始")
@@ -372,6 +369,11 @@ def send_connections(account_name, paths, keywords, location="Japan", max_pages=
 
     for page in range(1, max_pages + 1):
         print(f"\n📄 ページ {page}/{max_pages} を処理中...")
+
+        # ページ番号をURLに追加してアクセス
+        search_url = search_url_base + f"&page={page}"
+        driver.get(search_url)
+        time.sleep(5)  # ページ読み込み待機
 
         # 現在のページで申請
         success, skip = send_connections_on_page(driver, paths['log_file'], total_success, max_requests)
@@ -384,36 +386,6 @@ def send_connections(account_name, paths, keywords, location="Japan", max_pages=
         if total_success >= max_requests:
             print(f"\n✅ 目標{max_requests}件に達しました。")
             break
-
-        # 次ページへ
-        if page < max_pages:
-            try:
-                # JavaScriptでページネーションボタンをクリック
-                next_clicked = driver.execute_script("""
-                    const buttons = document.querySelectorAll('button');
-                    for (const btn of buttons) {
-                        const ariaLabel = btn.getAttribute('aria-label') || '';
-                        const text = btn.textContent.trim();
-
-                        if (ariaLabel.includes('次') || ariaLabel.includes('Next') ||
-                            text.includes('次') || text.includes('Next')) {
-                            btn.scrollIntoView({ block: 'center', behavior: 'instant' });
-                            btn.click();
-                            return true;
-                        }
-                    }
-                    return false;
-                """)
-
-                if next_clicked:
-                    print("   ✓ 次ページへ遷移")
-                    time.sleep(5)
-                else:
-                    print("   ⚠️ 次ページボタンなし。終了します。")
-                    break
-            except Exception as e:
-                print(f"   ⚠️ ページ遷移エラー: {e}")
-                break
 
     # サマリー
     print(f"\n{'='*70}")
