@@ -146,7 +146,7 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
         const textLower = text.toLowerCase();
         
         // 「つながる」ボタンを検出（「つながり」ナビゲーションは除外）
-        if ((text === 'つながる' || textLower === 'connect') && 
+        if ((text.includes('つながる') || textLower.includes('connect')) && 
             !btn.closest('header')) {
             
             // ボタンの親要素を遡って候補者カードを特定
@@ -168,7 +168,7 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
                     name = name.split('•')[0].trim();
                 }
                 
-                if (name && name.length >= 2 && name !== 'つながる') {
+                if (name && name.length >= 2 && name !== 'つながる' && name !== 'つながり') {
                     candidates.push({
                         name: name,
                         buttonText: text,
@@ -212,7 +212,7 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
                     const text = btn.textContent.trim();
                     const textLower = text.toLowerCase();
                     
-                    if ((text === 'つながる' || textLower === 'connect') && 
+                    if ((text.includes('つながる') || textLower.includes('connect')) && 
                         !btn.closest('header')) {{
                         
                         let card = btn.parentElement;
