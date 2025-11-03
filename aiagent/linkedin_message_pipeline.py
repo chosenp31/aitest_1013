@@ -821,20 +821,57 @@ def send_message(driver, profile_url, name, message):
         time.sleep(2)
 
         if button_enabled:
-            # ポップアップを閉じる
+            # ポップアップを確実に閉じる（複数の方法を試す）
+            # 方法1: 新鮮なbody要素にESCAPEキーを送信
             try:
-                message_box.send_keys(Keys.ESCAPE)
+                body = driver.find_element(By.TAG_NAME, "body")
+                body.send_keys(Keys.ESCAPE)
                 time.sleep(1)
             except Exception:
+                pass
+
+            # 方法2: dialogにESCAPEキーを送信
+            try:
+                dialog = driver.find_element(By.XPATH, "//div[@role='dialog']")
+                dialog.send_keys(Keys.ESCAPE)
+                time.sleep(1)
+            except Exception:
+                pass
+
+            # 方法3: 閉じるボタンをクリック
+            try:
+                close_btn = driver.find_element(
+                    By.XPATH,
+                    "//div[@role='dialog']//button[contains(@aria-label, '閉じる') or contains(@aria-label, 'Dismiss') or contains(@aria-label, 'Close')]"
+                )
+                close_btn.click()
+                time.sleep(1)
+            except Exception:
+                pass
+
+            # 方法4: 15秒間ポーリングでポップアップの消失を確認
+            popup_closed = False
+            for i in range(15):
                 try:
-                    close_btn = driver.find_element(
-                        By.XPATH,
-                        "//div[@role='dialog']//button[contains(@aria-label, '閉じる') or contains(@aria-label, 'Dismiss') or contains(@aria-label, 'Close')]"
-                    )
-                    close_btn.click()
+                    driver.find_element(By.XPATH, "//div[@role='dialog']")
                     time.sleep(1)
-                except Exception:
-                    pass
+                except NoSuchElementException:
+                    popup_closed = True
+                    break
+
+            # 方法5: JavaScriptで強制的にダイアログとオーバーレイを削除
+            if not popup_closed:
+                driver.execute_script("""
+                    const dialogs = document.querySelectorAll('[role="dialog"]');
+                    dialogs.forEach(d => d.remove());
+
+                    const overlays = document.querySelectorAll('[class*="msg-overlay"]');
+                    overlays.forEach(o => o.remove());
+                """)
+                time.sleep(1)
+
+            # 次の送信前に2秒待機
+            time.sleep(2)
 
             return "success", "", "sent"
         else:
