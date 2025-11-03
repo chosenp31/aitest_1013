@@ -170,74 +170,6 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 # ==============================
 # ログイン
 # ==============================
-def verify_account_name(driver, expected_name):
-    """ログイン後にアカウント名を確認"""
-    try:
-        print("🔍 アカウント名を確認中...")
-
-        # プロフィールページに移動
-        driver.get("https://www.linkedin.com/in/me/")
-        time.sleep(3)
-
-        # 名前を取得（複数のセレクタで試行）
-        actual_name = None
-
-        # 方法1: h1タグから取得
-        try:
-            name_element = driver.find_element(By.CSS_SELECTOR, "h1.text-heading-xlarge")
-            actual_name = name_element.text.strip()
-        except:
-            pass
-
-        # 方法2: プロフィールカードから取得
-        if not actual_name:
-            try:
-                name_element = driver.find_element(By.CSS_SELECTOR, ".pv-text-details__left-panel h1")
-                actual_name = name_element.text.strip()
-            except:
-                pass
-
-        # 方法3: JavaScriptで取得
-        if not actual_name:
-            try:
-                actual_name = driver.execute_script("""
-                    const h1 = document.querySelector('h1');
-                    return h1 ? h1.textContent.trim() : null;
-                """)
-            except:
-                pass
-
-        if not actual_name:
-            print("⚠️ 警告: アカウント名を自動取得できませんでした")
-            confirm = input(f"選択したアカウント '{expected_name}' で続行しますか？ (yes/no): ").strip().lower()
-            if confirm != 'yes':
-                print("\n❌ 処理を中断しました\n")
-                driver.quit()
-                exit(1)
-            return
-
-        print(f"   LinkedIn上の名前: {actual_name}")
-        print(f"   選択したアカウント: {expected_name}")
-
-        # 名前が一致するか確認（部分一致）
-        if expected_name in actual_name or actual_name in expected_name:
-            print(f"✅ アカウント名が一致しました！\n")
-        else:
-            print(f"\n❌ エラー: アカウント名が一致しません！")
-            print(f"   LinkedIn: {actual_name}")
-            print(f"   選択: {expected_name}")
-            print(f"\n正しいアカウントでログインしてください。\n")
-            driver.quit()
-            exit(1)
-
-    except Exception as e:
-        print(f"⚠️ アカウント名確認中にエラー: {e}")
-        confirm = input(f"選択したアカウント '{expected_name}' で続行しますか？ (yes/no): ").strip().lower()
-        if confirm != 'yes':
-            print("\n❌ 処理を中断しました\n")
-            driver.quit()
-            exit(1)
-
 def login(account_name, cookie_file):
     """LinkedInにログイン（Cookie保存で2回目以降は自動）"""
     options = Options()
@@ -269,10 +201,6 @@ def login(account_name, cookie_file):
             current_url = driver.current_url
             if ("feed" in current_url or "home" in current_url) and "login" not in current_url:
                 print("✅ 自動ログイン成功！\n")
-
-                # アカウント名確認
-                verify_account_name(driver, account_name)
-
                 return driver
             else:
                 print("⚠️ Cookieが期限切れです。手動ログインに切り替えます...")
@@ -292,9 +220,6 @@ def login(account_name, cookie_file):
         time.sleep(1.5)
 
     print("✅ ログイン完了\n")
-
-    # アカウント名確認
-    verify_account_name(driver, account_name)
 
     # Cookieを保存
     try:
