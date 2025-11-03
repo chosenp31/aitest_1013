@@ -136,16 +136,20 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
 
     time.sleep(2)  # 最終的な読み込みを待つ
 
-    # 「つながる」ボタンを起点に候補者カードを検出（デバッグで成功した方法2を使用）
+    # つながり申請ボタンを検出（「つながり申請」「つながる」「Connect」全対応）
     script = """
     const allButtons = document.querySelectorAll('button');
     const candidates = [];
 
     allButtons.forEach((btn) => {
         const text = btn.textContent.trim();
+        const textLower = text.toLowerCase();
         
-        if (text.includes('つながる') && !btn.closest('header')) {
-            // 方法2: innerTextから名前を抽出（デバッグで成功した方法）
+        // 「つながり申請」「つながる」「Connect」など全パターンに対応
+        if ((text.includes('つながり') || text.includes('つながる') || textLower.includes('connect')) && 
+            !btn.closest('header')) {
+            
+            // ボタンの親要素を遡って候補者カードを特定
             let card = btn.parentElement;
             for (let i = 0; i < 8; i++) {
                 if (card && card.innerText && card.innerText.includes('•')) {
@@ -200,7 +204,7 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
 
             # ボタンをクリック
             try:
-                # JavaScriptで直接クリック（名前ベース検索、デバッグで成功した方法を使用）
+                # JavaScriptで直接クリック（名前ベース検索）
                 safe_name = name.replace("'", "\\'").replace('"', '\\"')
 
                 click_script = f"""
@@ -209,8 +213,12 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
 
                 for (const btn of allButtons) {{
                     const text = btn.textContent.trim();
+                    const textLower = text.toLowerCase();
                     
-                    if (text.includes('つながる') && !btn.closest('header')) {{
+                    // 「つながり申請」「つながる」「Connect」など全パターンに対応
+                    if ((text.includes('つながり') || text.includes('つながる') || textLower.includes('connect')) && 
+                        !btn.closest('header')) {{
+                        
                         let card = btn.parentElement;
                         for (let i = 0; i < 8; i++) {{
                             if (card && card.innerText && card.innerText.includes('•')) {{
