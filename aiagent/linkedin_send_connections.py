@@ -360,6 +360,10 @@ def send_connections(account_name, paths, keywords, location="Japan", max_pages=
     print(f"   ページ数: {max_pages}")
     print(f"   最大申請件数: {max_requests}")
 
+    # 最初のページにアクセス
+    driver.get(search_url_base)
+    time.sleep(5)
+
     print(f"\n{'='*70}")
     print(f"📊 つながり申請開始")
     print(f"{'='*70}")
@@ -369,11 +373,6 @@ def send_connections(account_name, paths, keywords, location="Japan", max_pages=
 
     for page in range(1, max_pages + 1):
         print(f"\n📄 ページ {page}/{max_pages} を処理中...")
-
-        # ページ番号をURLに追加してアクセス
-        search_url = search_url_base + f"&page={page}"
-        driver.get(search_url)
-        time.sleep(5)  # ページ読み込み待機
 
         # 現在のページで申請
         success, skip = send_connections_on_page(driver, paths['log_file'], total_success, max_requests)
@@ -386,6 +385,51 @@ def send_connections(account_name, paths, keywords, location="Japan", max_pages=
         if total_success >= max_requests:
             print(f"\n✅ 目標{max_requests}件に達しました。")
             break
+
+        # 次ページへ遷移（2つの方式を試す）
+        if page < max_pages:
+            transitioned = False
+
+            # 方式1: ボタンクリック（「つながり申請」ボタンアカウント向け）
+            try:
+                next_clicked = driver.execute_script("""
+                    const buttons = document.querySelectorAll('button');
+                    for (const btn of buttons) {
+                        const ariaLabel = btn.getAttribute('aria-label') || '';
+                        const text = btn.textContent.trim();
+
+                        if (ariaLabel.includes('次') || ariaLabel.includes('Next') ||
+                            text.includes('次') || text.includes('Next')) {
+                            btn.scrollIntoView({ block: 'center', behavior: 'instant' });
+                            btn.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                """)
+
+                if next_clicked:
+                    print("   ✓ 次ページへ遷移（ボタンクリック方式）")
+                    time.sleep(5)
+                    transitioned = True
+            except Exception as e:
+                print(f"   ⚠️ ボタンクリック方式失敗: {e}")
+
+            # 方式2: URLパラメータ（「つながる」ボタンアカウント向け、またはフォールバック）
+            if not transitioned:
+                try:
+                    next_page_url = search_url_base + f"&page={page + 1}"
+                    driver.get(next_page_url)
+                    print(f"   ✓ 次ページへ遷移（URLパラメータ方式: page={page + 1}）")
+                    time.sleep(5)
+                    transitioned = True
+                except Exception as e:
+                    print(f"   ⚠️ URLパラメータ方式失敗: {e}")
+
+            # どちらの方式も失敗した場合
+            if not transitioned:
+                print("   ⚠️ ページ遷移できませんでした。終了します。")
+                break
 
     # サマリー
     print(f"\n{'='*70}")
