@@ -136,79 +136,57 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
 
     time.sleep(2)  # 最終的な読み込みを待つ
 
-    # 候補者カードを取得してボタンをクリック
+    # 「つながる」ボタンを起点に候補者カードを検出
     script = """
-    const allLis = document.querySelectorAll('li');
-    const results = [];
-    let candidateIndex = 0;
+    const allButtons = document.querySelectorAll('button');
+    const candidates = [];
 
-    allLis.forEach((li) => {
-        // ナビゲーション要素やフィルター要素を除外
-        const classes = li.className || '';
-        if (classes.includes('global-nav') ||
-            classes.includes('search-reusables__filter') ||
-            classes.includes('search-reusables__collection-values')) {
-            return;
-        }
-
-        // 名前要素（span[aria-hidden="true"]）があるかチェック
-        const nameEl = li.querySelector('span[aria-hidden="true"]');
-        if (!nameEl) return;
-
-        const name = nameEl.textContent.trim();
-        if (!name || name.length < 2) return;
-
-        // ボタンがあるかチェック
-        const buttons = li.querySelectorAll('button');
-        if (buttons.length === 0) return;
-
-        // つながり申請ボタンまたはメッセージボタンがあるか確認
-        let hasConnectButton = false;
-        let hasMessageButton = false;
-
-        for (const btn of buttons) {
-            const text = btn.textContent.trim();
-            const ariaLabel = btn.getAttribute('aria-label') || '';
-            const textLower = text.toLowerCase();
-            const ariaLower = ariaLabel.toLowerCase();
-
-            // 柔軟なボタン判定: 「つながる」「つながり申請」「Connect」などに対応
-            if (text.includes('つながり') || text.includes('つながる') ||
-                textLower.includes('connect') || ariaLower.includes('connect')) {
-                hasConnectButton = true;
-                break;
+    allButtons.forEach((btn) => {
+        const text = btn.textContent.trim();
+        const textLower = text.toLowerCase();
+        
+        // 「つながる」ボタンを検出（「つながり」ナビゲーションは除外）
+        if ((text === 'つながる' || textLower === 'connect') && 
+            !btn.closest('header')) {
+            
+            // ボタンの親要素を遡って候補者カードを特定
+            let card = btn.parentElement;
+            for (let i = 0; i < 10; i++) {
+                if (card.querySelectorAll('button').length >= 1) {
+                    break;
+                }
+                card = card.parentElement;
+                if (!card) break;
             }
-            if (text.includes('メッセージ') || text.includes('Message') ||
-                ariaLabel.includes('メッセージ') || ariaLabel.includes('message')) {
-                hasMessageButton = true;
+            
+            if (card) {
+                const cardText = card.innerText;
+                // 名前を抽出（最初の行、"•"の前まで）
+                const lines = cardText.split('\\n');
+                let name = lines[0] || '';
+                if (name.includes('•')) {
+                    name = name.split('•')[0].trim();
+                }
+                
+                if (name && name.length >= 2 && name !== 'つながる') {
+                    candidates.push({
+                        name: name,
+                        buttonText: text,
+                        hasConnectButton: true
+                    });
+                }
             }
-        }
-
-        // つながり申請ボタンまたはメッセージボタンがある場合のみ候補者カードとして扱う
-        if (hasConnectButton || hasMessageButton) {
-            results.push({
-                index: candidateIndex,
-                name: name,
-                hasConnectButton: hasConnectButton,
-                classes: classes
-            });
-            candidateIndex++;
         }
     });
-
-    return results;
+    
+    return candidates;
     """
 
     try:
         candidates = driver.execute_script(script)
 
         # 検出結果を表示
-        connect_count = sum(1 for c in candidates if c['hasConnectButton'])
-        already_connected_count = len(candidates) - connect_count
-
         print(f"   🔍 検出: 候補者{len(candidates)}件")
-        print(f"      - つながり申請可能: {connect_count}件")
-        print(f"      - 既接続: {already_connected_count}件")
 
         success_count = 0
         skip_count = 0
@@ -220,83 +198,54 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
                 break
 
             name = candidate['name']
-            has_button = candidate['hasConnectButton']
-
-            if not has_button:
-                print(f"   ⏭️  {name} - つながり申請ボタンなし（既接続または保留中）")
-                skip_count += 1
-                log_request(name, "skip", "no_connect_button")
-                continue
 
             # ボタンをクリック
             try:
                 # JavaScriptで直接クリック（名前ベース検索）
-                # シングルクォートをエスケープ
-                safe_name = name.replace("'", "\\'")
+                safe_name = name.replace("'", "\\'").replace('"', '\\"')
 
                 click_script = f"""
-                const allLis = document.querySelectorAll('li');
-                let targetCard = null;
+                const allButtons = document.querySelectorAll('button');
+                let targetButton = null;
 
-                // 候補者カードを名前で検索
-                for (const li of allLis) {{
-                    const classes = li.className || '';
-                    if (classes.includes('global-nav') ||
-                        classes.includes('search-reusables__filter') ||
-                        classes.includes('search-reusables__collection-values')) {{
-                        continue;
-                    }}
-
-                    const nameEl = li.querySelector('span[aria-hidden="true"]');
-                    if (!nameEl) continue;
-
-                    const cardName = nameEl.textContent.trim();
-
-                    // 名前が一致するかチェック
-                    if (cardName === '{safe_name}') {{
-                        targetCard = li;
-                        break;
-                    }}
-                }}
-
-                // デバッグ情報を含む結果オブジェクト
-                const result = {{
-                    success: false,
-                    cardFound: !!targetCard,
-                    buttonCount: 0,
-                    buttonTexts: [],
-                    connectButtonFound: false
-                }};
-
-                if (!targetCard) {{
-                    return result;
-                }}
-
-                // つながり申請ボタンを探してクリック
-                const buttons = targetCard.querySelectorAll('button');
-                result.buttonCount = buttons.length;
-
-                for (const btn of buttons) {{
+                for (const btn of allButtons) {{
                     const text = btn.textContent.trim();
                     const textLower = text.toLowerCase();
-                    result.buttonTexts.push(text);
-
-                    // 柔軟なボタン判定: 「つながる」「つながり申請」「Connect」などに対応
-                    if (text.includes('つながり') || text.includes('つながる') ||
-                        textLower.includes('connect')) {{
-                        result.connectButtonFound = true;
-
-                        // ボタンをスクロールして表示
-                        btn.scrollIntoView({{ block: 'center', behavior: 'instant' }});
-
-                        // クリック
-                        btn.click();
-                        result.success = true;
-                        break;
+                    
+                    if ((text === 'つながる' || textLower === 'connect') && 
+                        !btn.closest('header')) {{
+                        
+                        let card = btn.parentElement;
+                        for (let i = 0; i < 10; i++) {{
+                            if (card.querySelectorAll('button').length >= 1) {{
+                                break;
+                            }}
+                            card = card.parentElement;
+                            if (!card) break;
+                        }}
+                        
+                        if (card) {{
+                            const cardText = card.innerText;
+                            const lines = cardText.split('\\n');
+                            let cardName = lines[0] || '';
+                            if (cardName.includes('•')) {{
+                                cardName = cardName.split('•')[0].trim();
+                            }}
+                            
+                            if (cardName === '{safe_name}') {{
+                                targetButton = btn;
+                                break;
+                            }}
+                        }}
                     }}
                 }}
 
-                return result;
+                if (targetButton) {{
+                    targetButton.scrollIntoView({{ block: 'center', behavior: 'instant' }});
+                    targetButton.click();
+                    return {{ success: true }};
+                }}
+                return {{ success: false }};
                 """
 
                 result = driver.execute_script(click_script)
@@ -321,18 +270,8 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
                     delay = random.uniform(*DELAY_RANGE)
                     time.sleep(delay)
                 else:
-                    # 失敗の詳細を表示
-                    if not result['cardFound']:
-                        error_msg = "候補者カードが見つからない"
-                    elif result['buttonCount'] == 0:
-                        error_msg = "ボタンが0個"
-                    elif not result['connectButtonFound']:
-                        error_msg = f"つながり申請ボタンなし (ボタン: {', '.join(result['buttonTexts'][:3])})"
-                    else:
-                        error_msg = "クリック実行失敗"
-
-                    print(f"   ❌ {name} - {error_msg}")
-                    log_request(name, "error", error_msg)
+                    print(f"   ❌ {name} - クリック失敗")
+                    log_request(name, "error", "click_failed")
 
             except Exception as e:
                 print(f"   ❌ {name} - エラー: {e}")
