@@ -27,17 +27,46 @@ from webdriver_manager.chrome import ChromeDriverManager
 load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.path.join(BASE_DIR, "data")
 
-# ファイルパス
-COOKIE_FILE = os.path.join(DATA_DIR, "cookies.pkl")
-CONNECTIONS_FILE = os.path.join(DATA_DIR, "connections_list.csv")
-PROFILES_FILE = os.path.join(DATA_DIR, "profiles_detailed.csv")
-SCORED_FILE = os.path.join(DATA_DIR, "scored_connections.json")
-MESSAGES_FILE = os.path.join(DATA_DIR, "messages_v2.csv")
-MESSAGE_LOG_FILE = os.path.join(DATA_DIR, "message_logs.csv")
+# アカウント名の定義
+AVAILABLE_ACCOUNTS = ["依田", "桜井", "田中"]
 
-os.makedirs(DATA_DIR, exist_ok=True)
+def select_account():
+    """アカウントを選択"""
+    print(f"\n{'='*70}")
+    print(f"📋 使用するLinkedInアカウントを選択")
+    print(f"{'='*70}")
+    for idx, account in enumerate(AVAILABLE_ACCOUNTS, start=1):
+        print(f"{idx}. {account}")
+    print(f"{'='*70}\n")
+
+    while True:
+        choice = input(f"アカウント番号を入力 (1-{len(AVAILABLE_ACCOUNTS)}): ").strip()
+        try:
+            choice_num = int(choice)
+            if 1 <= choice_num <= len(AVAILABLE_ACCOUNTS):
+                selected = AVAILABLE_ACCOUNTS[choice_num - 1]
+                print(f"\n✅ 選択: {selected}\n")
+                return selected
+            else:
+                print(f"⚠️ 1-{len(AVAILABLE_ACCOUNTS)}の数値を入力してください")
+        except ValueError:
+            print("⚠️ 数値を入力してください")
+
+def get_account_paths(account_name):
+    """アカウント毎のディレクトリとファイルパスを取得"""
+    account_dir = os.path.join(BASE_DIR, "data", account_name)
+    os.makedirs(account_dir, exist_ok=True)
+
+    return {
+        'account_dir': account_dir,
+        'cookie_file': os.path.join(account_dir, "linkedin_cookies.pkl"),
+        'connections_file': os.path.join(account_dir, "connections_list.csv"),
+        'profiles_file': os.path.join(account_dir, "profiles_detailed.csv"),
+        'scored_file': os.path.join(account_dir, "scored_connections.json"),
+        'messages_file': os.path.join(account_dir, "messages_v2.csv"),
+        'message_log_file': os.path.join(account_dir, "message_logs.csv")
+    }
 
 # OpenAI設定
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -83,6 +112,7 @@ LinkedIn Premium会員: {is_premium}
    - 31-35歳: 20点
    - 36-40歳: 15点
    - 41歳以上: **即座に除外（スコア0、decision: "skip"）**
+   - **年齢不明の場合: 除外せず、年齢スコア0点として扱う（他の項目でスコアリング）**
 
 2. IT業界経験評価（0-40点）
    - キーワード: SIer, ITコンサルタント, エンジニア, DXエンジニア, システム開発, クラウド, AI, データサイエンス
@@ -140,7 +170,75 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 # ==============================
 # ログイン
 # ==============================
-def login():
+def verify_account_name(driver, expected_name):
+    """ログイン後にアカウント名を確認"""
+    try:
+        print("🔍 アカウント名を確認中...")
+
+        # プロフィールページに移動
+        driver.get("https://www.linkedin.com/in/me/")
+        time.sleep(3)
+
+        # 名前を取得（複数のセレクタで試行）
+        actual_name = None
+
+        # 方法1: h1タグから取得
+        try:
+            name_element = driver.find_element(By.CSS_SELECTOR, "h1.text-heading-xlarge")
+            actual_name = name_element.text.strip()
+        except:
+            pass
+
+        # 方法2: プロフィールカードから取得
+        if not actual_name:
+            try:
+                name_element = driver.find_element(By.CSS_SELECTOR, ".pv-text-details__left-panel h1")
+                actual_name = name_element.text.strip()
+            except:
+                pass
+
+        # 方法3: JavaScriptで取得
+        if not actual_name:
+            try:
+                actual_name = driver.execute_script("""
+                    const h1 = document.querySelector('h1');
+                    return h1 ? h1.textContent.trim() : null;
+                """)
+            except:
+                pass
+
+        if not actual_name:
+            print("⚠️ 警告: アカウント名を自動取得できませんでした")
+            confirm = input(f"選択したアカウント '{expected_name}' で続行しますか？ (yes/no): ").strip().lower()
+            if confirm != 'yes':
+                print("\n❌ 処理を中断しました\n")
+                driver.quit()
+                exit(1)
+            return
+
+        print(f"   LinkedIn上の名前: {actual_name}")
+        print(f"   選択したアカウント: {expected_name}")
+
+        # 名前が一致するか確認（部分一致）
+        if expected_name in actual_name or actual_name in expected_name:
+            print(f"✅ アカウント名が一致しました！\n")
+        else:
+            print(f"\n❌ エラー: アカウント名が一致しません！")
+            print(f"   LinkedIn: {actual_name}")
+            print(f"   選択: {expected_name}")
+            print(f"\n正しいアカウントでログインしてください。\n")
+            driver.quit()
+            exit(1)
+
+    except Exception as e:
+        print(f"⚠️ アカウント名確認中にエラー: {e}")
+        confirm = input(f"選択したアカウント '{expected_name}' で続行しますか？ (yes/no): ").strip().lower()
+        if confirm != 'yes':
+            print("\n❌ 処理を中断しました\n")
+            driver.quit()
+            exit(1)
+
+def login(account_name, cookie_file):
     """LinkedInにログイン（Cookie保存で2回目以降は自動）"""
     options = Options()
     options.add_argument("--start-maximized")
@@ -151,13 +249,13 @@ def login():
     driver = webdriver.Chrome(service=service, options=options)
 
     # Cookie自動ログイン
-    if os.path.exists(COOKIE_FILE):
-        print("🔑 保存されたCookieを使用して自動ログイン中...")
+    if os.path.exists(cookie_file):
+        print(f"🔑 保存されたCookieを使用して自動ログイン中（アカウント: {account_name}）...")
         driver.get("https://www.linkedin.com")
         time.sleep(2)
 
         try:
-            with open(COOKIE_FILE, "rb") as f:
+            with open(cookie_file, "rb") as f:
                 cookies = pickle.load(f)
             for cookie in cookies:
                 try:
@@ -171,17 +269,22 @@ def login():
             current_url = driver.current_url
             if ("feed" in current_url or "home" in current_url) and "login" not in current_url:
                 print("✅ 自動ログイン成功！\n")
+
+                # アカウント名確認
+                verify_account_name(driver, account_name)
+
                 return driver
             else:
                 print("⚠️ Cookieが期限切れです。手動ログインに切り替えます...")
-                os.remove(COOKIE_FILE)
+                os.remove(cookie_file)
         except Exception as e:
             print(f"⚠️ Cookie読み込みエラー: {e}")
-            if os.path.exists(COOKIE_FILE):
-                os.remove(COOKIE_FILE)
+            if os.path.exists(cookie_file):
+                os.remove(cookie_file)
 
     # 手動ログイン
-    print("🔑 LinkedIn 手動ログインモード開始...")
+    print(f"🔑 LinkedIn 手動ログインモード開始（アカウント: {account_name}）...")
+    print(f"⚠️  必ず '{account_name}' アカウントでログインしてください！")
     driver.get("https://www.linkedin.com/login")
     print("🌐 ご自身でLinkedInにログインしてください...")
 
@@ -190,12 +293,15 @@ def login():
 
     print("✅ ログイン完了\n")
 
+    # アカウント名確認
+    verify_account_name(driver, account_name)
+
     # Cookieを保存
     try:
         cookies = driver.get_cookies()
-        with open(COOKIE_FILE, "wb") as f:
+        with open(cookie_file, "wb") as f:
             pickle.dump(cookies, f)
-        print(f"💾 Cookieを保存しました\n")
+        print(f"💾 Cookieを保存しました（{account_name}用）\n")
     except Exception as e:
         print(f"⚠️ Cookie保存エラー: {e}\n")
 
@@ -484,8 +590,8 @@ def get_profile_details(driver, profile_url, name):
             'skills': ''
         }
 
-def get_all_profiles(driver, connections):
-    """全プロフィールの詳細を取得"""
+def get_all_profiles(driver, connections, profiles_file):
+    """全プロフィールの詳細を取得（重複回避）"""
 
     print(f"{'='*70}")
     print(f"📊 Step 3: プロフィール詳細取得")
@@ -493,39 +599,78 @@ def get_all_profiles(driver, connections):
     print(f"対象者数: {len(connections)} 件")
     print(f"{'='*70}\n")
 
-    results = []
+    # 既存のプロフィールデータを読み込み
+    existing_profiles = {}
+    existing_count = 0
 
-    for idx, conn in enumerate(connections, start=1):
+    if os.path.exists(profiles_file):
+        try:
+            with open(profiles_file, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    profile_url = row.get('profile_url', '')
+                    if profile_url:
+                        existing_profiles[profile_url] = row
+                        existing_count += 1
+
+            print(f"📂 既存データ読み込み: {existing_count} 件\n")
+        except Exception as e:
+            print(f"⚠️ 既存データ読み込みエラー: {e}\n")
+
+    # 新規取得が必要なつながりをフィルタリング
+    new_connections = []
+    skipped_count = 0
+
+    for conn in connections:
+        profile_url = conn.get('profile_url', '')
+        if profile_url and profile_url not in existing_profiles:
+            new_connections.append(conn)
+        elif profile_url:
+            skipped_count += 1
+
+    print(f"📋 取得状況:")
+    print(f"   既存: {existing_count} 件")
+    print(f"   スキップ: {skipped_count} 件")
+    print(f"   新規取得: {len(new_connections)} 件\n")
+
+    # 新規プロフィールを取得
+    new_profiles = []
+
+    for idx, conn in enumerate(new_connections, start=1):
         name = conn.get('name', '不明')
         profile_url = conn.get('profile_url', '')
 
         if not profile_url:
-            print(f"[{idx}/{len(connections)}] ⚠️ {name} - URLなし、スキップ\n")
+            print(f"[{idx}/{len(new_connections)}] ⚠️ {name} - URLなし、スキップ\n")
             continue
 
-        print(f"[{idx}/{len(connections)}] 🔍 {name} のプロフィールを取得中...")
+        print(f"[{idx}/{len(new_connections)}] 🔍 {name} のプロフィールを取得中...")
 
         details = get_profile_details(driver, profile_url, name)
-        results.append(details)
+        new_profiles.append(details)
 
         if details.get('is_premium'):
             print(f"   🔶 LinkedIn Premium会員")
         print(f"   ✅ 取得完了\n")
 
         # 遅延
-        if idx < len(connections):
+        if idx < len(new_connections):
             time.sleep(random.uniform(3, 6))
 
+    # 既存 + 新規を結合
+    all_profiles = list(existing_profiles.values()) + new_profiles
+
     # CSV保存
-    with open(PROFILES_FILE, "w", newline="", encoding="utf-8") as f:
+    with open(profiles_file, "w", newline="", encoding="utf-8") as f:
         fieldnames = ["name", "profile_url", "headline", "location", "is_premium", "experiences", "education", "skills"]
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
-        writer.writerows(results)
+        writer.writerows(all_profiles)
 
-    print(f"💾 保存完了: {PROFILES_FILE}\n")
+    print(f"💾 保存完了: {profiles_file}")
+    print(f"   合計: {len(all_profiles)} 件（既存 {existing_count} + 新規 {len(new_profiles)}）\n")
 
-    return results
+    return all_profiles
 
 # ==============================
 # Step 4: AIスコアリング
@@ -880,11 +1025,54 @@ def send_message(driver, profile_url, name, message):
     except Exception as e:
         return "error", f"予期しないエラー: {e}", "unexpected_error"
 
-def log_message(name, profile_url, result, error="", details=""):
-    """送信結果をログに記録"""
-    file_exists = os.path.exists(MESSAGE_LOG_FILE)
+def filter_already_sent(targets, message_log_file):
+    """送信済みを除外（result="success"のみ）"""
 
-    with open(MESSAGE_LOG_FILE, "a", newline="", encoding="utf-8") as f:
+    print(f"{'='*70}")
+    print(f"🔍 送信済みチェック")
+    print(f"{'='*70}\n")
+
+    # 送信済みのprofile_urlをセット化
+    sent_urls = set()
+
+    if os.path.exists(message_log_file):
+        try:
+            with open(message_log_file, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    result = row.get('result', '')
+                    profile_url = row.get('profile_url', '')
+                    # result="success"のみ除外（失敗者は再送信対象）
+                    if result == "success" and profile_url:
+                        sent_urls.add(profile_url)
+
+            print(f"📂 送信済みデータ読み込み: {len(sent_urls)} 件（success のみ）\n")
+        except Exception as e:
+            print(f"⚠️ 送信ログ読み込みエラー: {e}\n")
+
+    # 送信済みを除外
+    filtered_targets = []
+    skipped_count = 0
+
+    for target in targets:
+        profile_url = target.get('profile_url', '')
+        if profile_url not in sent_urls:
+            filtered_targets.append(target)
+        else:
+            skipped_count += 1
+
+    print(f"📋 フィルタリング結果:")
+    print(f"   元の送信対象: {len(targets)} 件")
+    print(f"   既送信スキップ: {skipped_count} 件")
+    print(f"   最終送信対象: {len(filtered_targets)} 件\n")
+
+    return filtered_targets
+
+def log_message(name, profile_url, result, message_log_file, error="", details=""):
+    """送信結果をログに記録"""
+    file_exists = os.path.exists(message_log_file)
+
+    with open(message_log_file, "a", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=["date", "name", "profile_url", "result", "error", "details"])
         if not file_exists:
             writer.writeheader()
@@ -897,7 +1085,7 @@ def log_message(name, profile_url, result, error="", details=""):
             "details": details
         })
 
-def send_all_messages(driver, targets, max_messages):
+def send_all_messages(driver, targets, max_messages, message_log_file):
     """全メッセージを送信"""
 
     print(f"{'='*70}")
@@ -973,7 +1161,7 @@ def send_all_messages(driver, targets, max_messages):
 
         result, error, details = send_message(driver, profile_url, name, message)
 
-        log_message(name, profile_url, result, error, details)
+        log_message(name, profile_url, result, message_log_file, error, details)
 
         if result == "success":
             success_count += 1
@@ -993,23 +1181,24 @@ def send_all_messages(driver, targets, max_messages):
     print(f"{'='*70}")
     print(f"✅ 送信成功: {success_count} 件")
     print(f"❌ 送信失敗: {error_count} 件")
-    print(f"📝 ログ: {MESSAGE_LOG_FILE}")
+    print(f"📝 ログ: {message_log_file}")
     print(f"{'='*70}\n")
 
 # ==============================
 # メイン処理
 # ==============================
-def main(start_date, use_scoring, min_score, max_messages):
+def main(account_name, paths, start_date, use_scoring, min_score, max_messages):
     """メイン処理"""
 
     print(f"\n{'='*70}")
     print(f"🚀 LinkedIn メッセージ送信パイプライン")
     print(f"{'='*70}")
+    print(f"アカウント: {account_name}")
     print(f"開始日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'='*70}\n")
 
     # ログイン
-    driver = login()
+    driver = login(account_name, paths['cookie_file'])
 
     try:
         # Step 2: つながり取得
@@ -1020,7 +1209,7 @@ def main(start_date, use_scoring, min_score, max_messages):
             return
 
         # Step 3: プロフィール詳細取得
-        profiles = get_all_profiles(driver, connections)
+        profiles = get_all_profiles(driver, connections, paths['profiles_file'])
 
         if not profiles:
             print("⚠️ プロフィールが取得できませんでした。処理を終了します。\n")
@@ -1050,8 +1239,15 @@ def main(start_date, use_scoring, min_score, max_messages):
 
             print(f"✅ 送信対象: {len(send_targets)} 件（スコアリングなし）\n")
 
+        # 送信済みを除外
+        send_targets = filter_already_sent(send_targets, paths['message_log_file'])
+
+        if not send_targets:
+            print("⚠️ 送信対象が0件です（全て送信済み）。処理を終了します。\n")
+            return
+
         # Step 5-6: メッセージ生成・送信
-        send_all_messages(driver, send_targets, max_messages)
+        send_all_messages(driver, send_targets, max_messages, paths['message_log_file'])
 
     except KeyboardInterrupt:
         print("\n\n⚠️ ユーザーによって処理が中断されました\n")
@@ -1076,6 +1272,12 @@ if __name__ == "__main__":
     print(f"\n{'='*70}")
     print(f"🚀 LinkedIn メッセージ送信パイプライン")
     print(f"{'='*70}\n")
+
+    # Step 1: アカウント選択
+    account_name = select_account()
+    paths = get_account_paths(account_name)
+
+    print(f"📁 データ保存先: {paths['account_dir']}\n")
 
     # つながり取得の開始日
     print("【つながり取得の開始日】")
@@ -1136,6 +1338,7 @@ if __name__ == "__main__":
     print(f"\n{'='*70}")
     print(f"📋 設定内容")
     print(f"{'='*70}")
+    print(f"アカウント: {account_name}")
     print(f"つながり取得開始日: {start_date}")
     print(f"スコアリング条件: {'使用する' if use_scoring else '使用しない（全員に送信）'}")
     if use_scoring:
@@ -1148,4 +1351,4 @@ if __name__ == "__main__":
         print("\n❌ 処理をキャンセルしました\n")
         exit(0)
 
-    main(start_date, use_scoring, min_score, max_messages)
+    main(account_name, paths, start_date, use_scoring, min_score, max_messages)

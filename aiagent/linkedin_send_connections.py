@@ -20,18 +20,117 @@ from webdriver_manager.chrome import ChromeDriverManager
 # 設定
 # ==============================
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.path.join(BASE_DIR, "data")
-LOG_FILE = os.path.join(DATA_DIR, "connection_logs.csv")
-COOKIE_FILE = os.path.join(DATA_DIR, "cookies.pkl")
 
-os.makedirs(DATA_DIR, exist_ok=True)
+# アカウント名の定義
+AVAILABLE_ACCOUNTS = ["依田", "桜井", "田中"]
+
+def select_account():
+    """アカウントを選択"""
+    print(f"\n{'='*70}")
+    print(f"📋 使用するLinkedInアカウントを選択")
+    print(f"{'='*70}")
+    for idx, account in enumerate(AVAILABLE_ACCOUNTS, start=1):
+        print(f"{idx}. {account}")
+    print(f"{'='*70}\n")
+
+    while True:
+        choice = input(f"アカウント番号を入力 (1-{len(AVAILABLE_ACCOUNTS)}): ").strip()
+        try:
+            choice_num = int(choice)
+            if 1 <= choice_num <= len(AVAILABLE_ACCOUNTS):
+                selected = AVAILABLE_ACCOUNTS[choice_num - 1]
+                print(f"\n✅ 選択: {selected}\n")
+                return selected
+            else:
+                print(f"⚠️ 1-{len(AVAILABLE_ACCOUNTS)}の数値を入力してください")
+        except ValueError:
+            print("⚠️ 数値を入力してください")
+
+def get_account_paths(account_name):
+    """アカウント毎のディレクトリとファイルパスを取得"""
+    account_dir = os.path.join(BASE_DIR, "data", account_name)
+    os.makedirs(account_dir, exist_ok=True)
+
+    return {
+        'account_dir': account_dir,
+        'cookie_file': os.path.join(account_dir, "linkedin_cookies.pkl"),
+        'log_file': os.path.join(account_dir, "connection_logs.csv")
+    }
 
 DELAY_RANGE = (2, 4)  # クリック間隔（秒）
 
 # ==============================
 # ログイン
 # ==============================
-def login():
+def verify_account_name(driver, expected_name):
+    """ログイン後にアカウント名を確認"""
+    try:
+        print("🔍 アカウント名を確認中...")
+
+        # プロフィールページに移動
+        driver.get("https://www.linkedin.com/in/me/")
+        time.sleep(3)
+
+        # 名前を取得（複数のセレクタで試行）
+        actual_name = None
+
+        # 方法1: h1タグから取得
+        try:
+            name_element = driver.find_element(By.CSS_SELECTOR, "h1.text-heading-xlarge")
+            actual_name = name_element.text.strip()
+        except:
+            pass
+
+        # 方法2: プロフィールカードから取得
+        if not actual_name:
+            try:
+                name_element = driver.find_element(By.CSS_SELECTOR, ".pv-text-details__left-panel h1")
+                actual_name = name_element.text.strip()
+            except:
+                pass
+
+        # 方法3: JavaScriptで取得
+        if not actual_name:
+            try:
+                actual_name = driver.execute_script("""
+                    const h1 = document.querySelector('h1');
+                    return h1 ? h1.textContent.trim() : null;
+                """)
+            except:
+                pass
+
+        if not actual_name:
+            print("⚠️ 警告: アカウント名を自動取得できませんでした")
+            confirm = input(f"選択したアカウント '{expected_name}' で続行しますか？ (yes/no): ").strip().lower()
+            if confirm != 'yes':
+                print("\n❌ 処理を中断しました\n")
+                driver.quit()
+                exit(1)
+            return
+
+        print(f"   LinkedIn上の名前: {actual_name}")
+        print(f"   選択したアカウント: {expected_name}")
+
+        # 名前が一致するか確認（部分一致）
+        if expected_name in actual_name or actual_name in expected_name:
+            print(f"✅ アカウント名が一致しました！\n")
+        else:
+            print(f"\n❌ エラー: アカウント名が一致しません！")
+            print(f"   LinkedIn: {actual_name}")
+            print(f"   選択: {expected_name}")
+            print(f"\n正しいアカウントでログインしてください。\n")
+            driver.quit()
+            exit(1)
+
+    except Exception as e:
+        print(f"⚠️ アカウント名確認中にエラー: {e}")
+        confirm = input(f"選択したアカウント '{expected_name}' で続行しますか？ (yes/no): ").strip().lower()
+        if confirm != 'yes':
+            print("\n❌ 処理を中断しました\n")
+            driver.quit()
+            exit(1)
+
+def login(account_name, cookie_file):
     """LinkedInにログイン（Cookie保存で2回目以降は自動）"""
     options = Options()
     options.add_argument("--start-maximized")
@@ -42,13 +141,13 @@ def login():
     driver = webdriver.Chrome(service=service, options=options)
 
     # Cookie自動ログイン
-    if os.path.exists(COOKIE_FILE):
-        print("🔑 保存されたCookieを使用して自動ログイン中...")
+    if os.path.exists(cookie_file):
+        print(f"🔑 保存されたCookieを使用して自動ログイン中（アカウント: {account_name}）...")
         driver.get("https://www.linkedin.com")
         time.sleep(2)
 
         try:
-            with open(COOKIE_FILE, "rb") as f:
+            with open(cookie_file, "rb") as f:
                 cookies = pickle.load(f)
             for cookie in cookies:
                 try:
@@ -61,45 +160,53 @@ def login():
 
             current_url = driver.current_url
             if ("feed" in current_url or "home" in current_url) and "login" not in current_url:
-                print("✅ 自動ログイン成功！")
+                print("✅ 自動ログイン成功！\n")
+
+                # アカウント名確認
+                verify_account_name(driver, account_name)
+
                 return driver
             else:
                 print("⚠️ Cookieが期限切れです。手動ログインに切り替えます...")
-                os.remove(COOKIE_FILE)
+                os.remove(cookie_file)
         except Exception as e:
             print(f"⚠️ Cookie読み込みエラー: {e}")
-            if os.path.exists(COOKIE_FILE):
-                os.remove(COOKIE_FILE)
+            if os.path.exists(cookie_file):
+                os.remove(cookie_file)
 
     # 手動ログイン
-    print("🔑 LinkedIn 手動ログインモード開始...")
+    print(f"🔑 LinkedIn 手動ログインモード開始（アカウント: {account_name}）...")
+    print(f"⚠️  必ず '{account_name}' アカウントでログインしてください！")
     driver.get("https://www.linkedin.com/login")
     print("🌐 ご自身でLinkedInにログインしてください...")
 
     while ("feed" not in driver.current_url) and ("home" not in driver.current_url):
         time.sleep(1.5)
 
-    print("✅ ログイン完了")
+    print("✅ ログイン完了\n")
+
+    # アカウント名確認
+    verify_account_name(driver, account_name)
 
     # Cookieを保存
     try:
         cookies = driver.get_cookies()
-        with open(COOKIE_FILE, "wb") as f:
+        with open(cookie_file, "wb") as f:
             pickle.dump(cookies, f)
-        print(f"💾 Cookieを保存しました")
+        print(f"💾 Cookieを保存しました（{account_name}用）\n")
     except Exception as e:
-        print(f"⚠️ Cookie保存エラー: {e}")
+        print(f"⚠️ Cookie保存エラー: {e}\n")
 
     return driver
 
 # ==============================
 # ログ記録
 # ==============================
-def log_request(name, result, error=""):
+def log_request(name, result, log_file, error=""):
     """送信結果をログに記録"""
-    file_exists = os.path.exists(LOG_FILE)
+    file_exists = os.path.exists(log_file)
 
-    with open(LOG_FILE, "a", newline="", encoding="utf-8") as f:
+    with open(log_file, "a", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=["date", "name", "result", "error"])
         if not file_exists:
             writer.writeheader()
@@ -113,7 +220,7 @@ def log_request(name, result, error=""):
 # ==============================
 # 検索結果ページ上でつながり申請
 # ==============================
-def send_connections_on_page(driver, current_total=0, max_requests=50):
+def send_connections_on_page(driver, log_file, current_total=0, max_requests=50):
     """現在の検索結果ページ上で全ての候補者につながり申請"""
 
     # ページを下までスクロール（改善版：より確実に全候補者を読み込む）
@@ -276,18 +383,18 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
 
                     print(f"   ✅ {name} - つながり申請を送信")
                     success_count += 1
-                    log_request(name, "success", "")
+                    log_request(name, "success", log_file, "")
 
                     # 遅延
                     delay = random.uniform(*DELAY_RANGE)
                     time.sleep(delay)
                 else:
                     print(f"   ❌ {name} - クリック失敗")
-                    log_request(name, "error", "click_failed")
+                    log_request(name, "error", log_file, "click_failed")
 
             except Exception as e:
                 print(f"   ❌ {name} - エラー: {e}")
-                log_request(name, "error", str(e))
+                log_request(name, "error", log_file, str(e))
 
         return success_count, skip_count
 
@@ -298,17 +405,19 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
 # ==============================
 # メイン処理
 # ==============================
-def send_connections(keywords, location="Japan", max_pages=1, max_requests=5):
+def send_connections(account_name, paths, keywords, location="Japan", max_pages=1, max_requests=5):
     """
     検索結果ページ上で直接つながり申請を送信
 
     Args:
+        account_name: アカウント名
+        paths: アカウント毎のパス情報
         keywords: 検索キーワード
         location: 地域
         max_pages: 検索ページ数
         max_requests: 最大申請件数
     """
-    driver = login()
+    driver = login(account_name, paths['cookie_file'])
 
     # 検索URL構築（2次のつながりのみに絞る）
     search_url = f"https://www.linkedin.com/search/results/people/?keywords={keywords}&origin=GLOBAL_SEARCH_HEADER"
@@ -319,6 +428,7 @@ def send_connections(keywords, location="Japan", max_pages=1, max_requests=5):
     search_url += "&network=%5B%22S%22%5D"
 
     print(f"\n🔎 検索条件:")
+    print(f"   アカウント: {account_name}")
     print(f"   キーワード: {keywords}")
     print(f"   地域: {location}")
     print(f"   つながりレベル: 2次のみ（1次は除外）")
@@ -339,7 +449,7 @@ def send_connections(keywords, location="Japan", max_pages=1, max_requests=5):
         print(f"\n📄 ページ {page}/{max_pages} を処理中...")
 
         # 現在のページで申請
-        success, skip = send_connections_on_page(driver, total_success, max_requests)
+        success, skip = send_connections_on_page(driver, paths['log_file'], total_success, max_requests)
         total_success += success
         total_skip += skip
 
@@ -386,7 +496,7 @@ def send_connections(keywords, location="Japan", max_pages=1, max_requests=5):
     print(f"{'='*70}")
     print(f"✅ 送信成功: {total_success}件")
     print(f"⏭️  スキップ: {total_skip}件")
-    print(f"📝 ログ: {LOG_FILE}")
+    print(f"📝 ログ: {paths['log_file']}")
 
     input("\nEnterキーを押してブラウザを閉じます...")
     driver.quit()
@@ -398,6 +508,12 @@ if __name__ == "__main__":
     print(f"\n{'='*70}")
     print(f"🤝 LinkedIn つながり申請")
     print(f"{'='*70}\n")
+
+    # Step 1: アカウント選択
+    account_name = select_account()
+    paths = get_account_paths(account_name)
+
+    print(f"📁 データ保存先: {paths['account_dir']}\n")
 
     # 検索キーワード
     print("【検索キーワード】")
@@ -447,6 +563,7 @@ if __name__ == "__main__":
     print(f"\n{'='*70}")
     print(f"📋 設定内容")
     print(f"{'='*70}")
+    print(f"アカウント: {account_name}")
     print(f"キーワード: {keywords}")
     print(f"地域: {location}")
     print(f"最大ページ数: {max_pages}")
@@ -458,4 +575,4 @@ if __name__ == "__main__":
         print("\n❌ 処理をキャンセルしました\n")
         exit(0)
 
-    send_connections(keywords, location, max_pages, max_requests)
+    send_connections(account_name, paths, keywords, location, max_pages, max_requests)
