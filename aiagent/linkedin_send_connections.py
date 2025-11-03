@@ -136,44 +136,41 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
 
     time.sleep(2)  # 最終的な読み込みを待つ
 
-    # 「つながる」ボタンを起点に候補者カードを検出
+    # 「つながる」ボタンを起点に候補者カードを検出（デバッグで成功した方法2を使用）
     script = """
     const allButtons = document.querySelectorAll('button');
     const candidates = [];
 
     allButtons.forEach((btn) => {
         const text = btn.textContent.trim();
-        const textLower = text.toLowerCase();
         
-        // 「つながる」ボタンを検出（「つながり」ナビゲーションは除外）
-        if ((text.includes('つながる') || textLower.includes('connect')) && 
-            !btn.closest('header')) {
-            
-            // ボタンの親要素を遡って候補者カードを特定
+        if (text.includes('つながる') && !btn.closest('header')) {
+            // 方法2: innerTextから名前を抽出（デバッグで成功した方法）
             let card = btn.parentElement;
-            for (let i = 0; i < 10; i++) {
-                if (card.querySelectorAll('button').length >= 1) {
+            for (let i = 0; i < 8; i++) {
+                if (card && card.innerText && card.innerText.includes('•')) {
                     break;
                 }
-                card = card.parentElement;
-                if (!card) break;
+                if (card) {
+                    card = card.parentElement;
+                }
             }
             
-            if (card) {
-                const cardText = card.innerText;
-                // 名前を抽出（最初の行、"•"の前まで）
-                const lines = cardText.split('\\n');
-                let name = lines[0] || '';
-                if (name.includes('•')) {
-                    name = name.split('•')[0].trim();
-                }
-                
-                if (name && name.length >= 2 && name !== 'つながる' && name !== 'つながり') {
-                    candidates.push({
-                        name: name,
-                        buttonText: text,
-                        hasConnectButton: true
-                    });
+            if (card && card.innerText) {
+                const lines = card.innerText.split('\\n');
+                if (lines[0]) {
+                    let name = lines[0].split('•')[0].trim();
+                    
+                    if (name && name.length >= 2 && 
+                        name !== 'つながる' && 
+                        name !== 'つながり' && 
+                        name !== 'ホーム' &&
+                        name !== 'メッセージ') {
+                        candidates.push({
+                            name: name,
+                            buttonText: text
+                        });
+                    }
                 }
             }
         }
@@ -187,6 +184,8 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
 
         # 検出結果を表示
         print(f"   🔍 検出: 候補者{len(candidates)}件")
+        if len(candidates) > 0:
+            print(f"   候補者: {', '.join([c['name'] for c in candidates[:5]])}{'...' if len(candidates) > 5 else ''}")
 
         success_count = 0
         skip_count = 0
@@ -201,7 +200,7 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
 
             # ボタンをクリック
             try:
-                # JavaScriptで直接クリック（名前ベース検索）
+                # JavaScriptで直接クリック（名前ベース検索、デバッグで成功した方法を使用）
                 safe_name = name.replace("'", "\\'").replace('"', '\\"')
 
                 click_script = f"""
@@ -210,31 +209,27 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
 
                 for (const btn of allButtons) {{
                     const text = btn.textContent.trim();
-                    const textLower = text.toLowerCase();
                     
-                    if ((text.includes('つながる') || textLower.includes('connect')) && 
-                        !btn.closest('header')) {{
-                        
+                    if (text.includes('つながる') && !btn.closest('header')) {{
                         let card = btn.parentElement;
-                        for (let i = 0; i < 10; i++) {{
-                            if (card.querySelectorAll('button').length >= 1) {{
+                        for (let i = 0; i < 8; i++) {{
+                            if (card && card.innerText && card.innerText.includes('•')) {{
                                 break;
                             }}
-                            card = card.parentElement;
-                            if (!card) break;
+                            if (card) {{
+                                card = card.parentElement;
+                            }}
                         }}
                         
-                        if (card) {{
-                            const cardText = card.innerText;
-                            const lines = cardText.split('\\n');
-                            let cardName = lines[0] || '';
-                            if (cardName.includes('•')) {{
-                                cardName = cardName.split('•')[0].trim();
-                            }}
-                            
-                            if (cardName === '{safe_name}') {{
-                                targetButton = btn;
-                                break;
+                        if (card && card.innerText) {{
+                            const lines = card.innerText.split('\\n');
+                            if (lines[0]) {{
+                                let cardName = lines[0].split('•')[0].trim();
+                                
+                                if (cardName === '{safe_name}') {{
+                                    targetButton = btn;
+                                    break;
+                                }}
                             }}
                         }}
                     }}
@@ -251,16 +246,25 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
                 result = driver.execute_script(click_script)
 
                 if result['success']:
-                    time.sleep(1)
+                    time.sleep(2)
 
-                    # モーダルが出た場合は「送信」をクリック
-                    try:
-                        send_btn = driver.find_element(By.XPATH, "//button[contains(@aria-label, '送信') or contains(., 'Send') or contains(., '送信')]")
-                        send_btn.click()
+                    # モーダルが出た場合は「送信」をJavaScriptでクリック
+                    send_clicked = driver.execute_script("""
+                        const buttons = document.querySelectorAll('button');
+                        for (const btn of buttons) {
+                            const text = btn.textContent.trim();
+                            const ariaLabel = btn.getAttribute('aria-label') || '';
+                            if (text.includes('送信') || text.includes('Send') || 
+                                ariaLabel.includes('送信') || ariaLabel.includes('Send')) {
+                                btn.click();
+                                return true;
+                            }
+                        }
+                        return false;
+                    """)
+                    
+                    if send_clicked:
                         time.sleep(1)
-                    except NoSuchElementException:
-                        # モーダルなしでもOK
-                        pass
 
                     print(f"   ✅ {name} - つながり申請を送信")
                     success_count += 1
@@ -337,22 +341,26 @@ def send_connections(keywords, location="Japan", max_pages=1, max_requests=5):
         # 次ページへ
         if page < max_pages:
             try:
-                # ページネーションボタンを探す
-                next_btn = None
-                try:
-                    next_btn = driver.find_element(
-                        By.XPATH,
-                        "//div[contains(@class, 'artdeco-pagination')]//button[contains(@aria-label, '次') or contains(@aria-label, 'Next')]"
-                    )
-                except NoSuchElementException:
-                    pass
+                # JavaScriptでページネーションボタンをクリック
+                next_clicked = driver.execute_script("""
+                    const buttons = document.querySelectorAll('button');
+                    for (const btn of buttons) {
+                        const ariaLabel = btn.getAttribute('aria-label') || '';
+                        const text = btn.textContent.trim();
+                        
+                        if (ariaLabel.includes('次') || ariaLabel.includes('Next') ||
+                            text.includes('次') || text.includes('Next')) {
+                            btn.scrollIntoView({ block: 'center', behavior: 'instant' });
+                            btn.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                """)
 
-                if next_btn:
-                    driver.execute_script("arguments[0].scrollIntoView(true);", next_btn)
-                    time.sleep(1)
-                    next_btn.click()
+                if next_clicked:
                     print("   ✓ 次ページへ遷移")
-                    time.sleep(4)
+                    time.sleep(5)
                 else:
                     print("   ⚠️ 次ページボタンなし。終了します。")
                     break
