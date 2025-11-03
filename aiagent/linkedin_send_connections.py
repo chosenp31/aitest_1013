@@ -310,14 +310,18 @@ def send_connections(keywords, location="Japan", max_pages=1, max_requests=5):
     """
     driver = login()
 
-    # 検索URL構築
+    # 検索URL構築（2次のつながりのみに絞る）
     search_url = f"https://www.linkedin.com/search/results/people/?keywords={keywords}&origin=GLOBAL_SEARCH_HEADER"
     if location:
         search_url += f"&location={location}"
 
+    # 2次のつながりフィルターを追加（1次のつながりを除外）
+    search_url += "&network=%5B%22S%22%5D"
+
     print(f"\n🔎 検索条件:")
     print(f"   キーワード: {keywords}")
     print(f"   地域: {location}")
+    print(f"   つながりレベル: 2次のみ（1次は除外）")
     print(f"   ページ数: {max_pages}")
     print(f"   最大申請件数: {max_requests}")
 
