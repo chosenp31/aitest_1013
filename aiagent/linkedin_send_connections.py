@@ -398,8 +398,24 @@ def send_connections(account_name, paths, keywords, location="Japan", max_pages=
                         const ariaLabel = btn.getAttribute('aria-label') || '';
                         const text = btn.textContent.trim();
 
-                        if (ariaLabel.includes('次') || ariaLabel.includes('Next') ||
-                            text.includes('次') || text.includes('Next')) {
+                        // フィルタボタン（1次、2次、3次）を除外
+                        if (text === '1次' || text === '2次' || text === '3次' ||
+                            text === '1次のつながり' || text === '2次のつながり' || text === '3次のつながり') {
+                            continue;
+                        }
+
+                        // ページネーションボタンを検出
+                        // aria-labelで「次へ」「次のページ」「Next」などを探す
+                        if (ariaLabel.includes('次へ') || ariaLabel.includes('次のページ') ||
+                            ariaLabel.toLowerCase().includes('next page') ||
+                            (ariaLabel.toLowerCase().includes('next') && !ariaLabel.includes('1次') && !ariaLabel.includes('2次') && !ariaLabel.includes('3次'))) {
+                            btn.scrollIntoView({ block: 'center', behavior: 'instant' });
+                            btn.click();
+                            return true;
+                        }
+
+                        // aria-labelがない場合、テキストで判定（ただし厳密に）
+                        if (!ariaLabel && (text === '次へ' || text.toLowerCase() === 'next')) {
                             btn.scrollIntoView({ block: 'center', behavior: 'instant' });
                             btn.click();
                             return true;
