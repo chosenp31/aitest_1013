@@ -64,6 +64,7 @@ LinkedIn Premium会員: {is_premium}
    - 31-35歳: 20点
    - 36-40歳: 15点
    - 41歳以上: **即座に除外（スコア0、decision: "skip"）**
+   - **年齢不明（推定不可）の場合: 0点だが除外しない（他の項目でスコアリング）**
 
 2. IT業界経験評価（0-40点）
    - キーワード: SIer, ITコンサルタント, エンジニア, DXエンジニア, システム開発, クラウド, AI, データサイエンス
@@ -105,6 +106,7 @@ LinkedIn Premium会員: {is_premium}
 【重要な注意事項】
 - LinkedIn Premium会員（is_premium: "True"または"yes"）は必ず除外（decision: "skip"、total_score: 0）
 - 41歳以上は必ず除外（decision: "skip"、total_score: 0）
+- **年齢不明（estimated_age: null）の場合は除外しない。age_score: 0 として他の項目でスコアリング**
 - 経営層（社長、CEO、取締役等）は必ず除外（decision: "skip"、total_score: 0）
 - HR・人材関係（リクルーター、採用担当等）は必ず除外（decision: "skip"、total_score: 0）
 - フューチャー株式会社またはフューチャーアーキテクト株式会社に現在勤務している者は必ず除外（decision: "skip"、total_score: 0）

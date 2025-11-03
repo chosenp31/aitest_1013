@@ -279,7 +279,7 @@ def get_profile_details(driver, profile_url, name):
 # メイン処理
 # ==============================
 def main():
-    """メイン処理"""
+    """メイン処理（既存プロフィールはスキップ）"""
 
     if not os.path.exists(INPUT_FILE):
         print(f"❌ エラー: つながりリストが見つかりません: {INPUT_FILE}")
@@ -295,32 +295,67 @@ def main():
         print("⚠️ つながりデータが空です")
         return
 
-    total = len(connections)
-
     print(f"\n{'='*70}")
     print(f"📊 プロフィール詳細取得開始")
     print(f"{'='*70}")
-    print(f"対象者数: {total} 件")
+
+    # 既存プロフィールを読み込み
+    existing_profiles = []
+    existing_urls = set()
+
+    if os.path.exists(OUTPUT_FILE):
+        try:
+            with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    existing_profiles.append(row)
+                    existing_urls.add(row.get('profile_url', ''))
+            print(f"📂 既存プロフィール: {len(existing_profiles)} 件")
+        except Exception as e:
+            print(f"⚠️ 既存ファイル読み込みエラー: {e}")
+
+    # 新規取得対象を抽出
+    new_connections = [
+        conn for conn in connections
+        if conn.get('profile_url', '') and conn.get('profile_url', '') not in existing_urls
+    ]
+
+    skipped_count = len(connections) - len(new_connections)
+
+    print(f"👥 今回のつながり総数: {len(connections)} 件")
+    print(f"✅ 既にプロフィール取得済み: {skipped_count} 件")
+    print(f"🆕 新規取得対象: {len(new_connections)} 件")
     print(f"{'='*70}\n")
+
+    if not new_connections:
+        print("⚠️ 新規取得対象が0件です。既存データをそのまま使用します。\n")
+        print(f"\n{'='*70}")
+        print(f"🎯 完了サマリー")
+        print(f"{'='*70}")
+        print(f"既存プロフィール: {len(existing_profiles)} 件")
+        print(f"新規取得: 0 件")
+        print(f"保存先: {OUTPUT_FILE}")
+        print(f"{'='*70}\n")
+        return
 
     # ログイン
     driver = login()
 
-    results = []
+    new_results = []
 
-    for idx, conn in enumerate(connections, start=1):
+    for idx, conn in enumerate(new_connections, start=1):
         name = conn.get('name', '不明')
         profile_url = conn.get('profile_url', '')
 
         if not profile_url:
-            print(f"[{idx}/{total}] ⚠️ {name} - URLなし、スキップ")
+            print(f"[{idx}/{len(new_connections)}] ⚠️ {name} - URLなし、スキップ")
             continue
 
-        print(f"[{idx}/{total}] 🔍 {name} のプロフィールを取得中...")
+        print(f"[{idx}/{len(new_connections)}] 🔍 {name} のプロフィールを取得中...")
 
         # プロフィール詳細取得
         details = get_profile_details(driver, profile_url, name)
-        results.append(details)
+        new_results.append(details)
 
         # 簡易表示
         premium_badge = "🔶 Premium会員" if details.get('is_premium') else ""
@@ -333,11 +368,14 @@ def main():
         print(f"   🔧 スキル: {len(details['skills'].split(',') if details['skills'] else [])} 件\n")
 
         # 遅延
-        if idx < total:
+        if idx < len(new_connections):
             delay = random.uniform(*DELAY_RANGE)
             time.sleep(delay)
 
-    # CSV保存
+    # 既存データと新規データを結合
+    all_profiles = existing_profiles + new_results
+
+    # CSV保存（既存データ + 新規データ）
     print(f"\n{'='*70}")
     print(f"💾 結果を保存中...")
     print(f"{'='*70}")
@@ -346,15 +384,18 @@ def main():
         fieldnames = ["name", "profile_url", "headline", "location", "is_premium", "experiences", "education", "skills"]
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
-        writer.writerows(results)
+        writer.writerows(all_profiles)
 
     print(f"✅ 保存完了: {OUTPUT_FILE}")
+    print(f"   既存: {len(existing_profiles)} 件 + 新規: {len(new_results)} 件 = 合計: {len(all_profiles)} 件")
 
     # サマリー
     print(f"\n{'='*70}")
     print(f"🎯 完了サマリー")
     print(f"{'='*70}")
-    print(f"取得件数: {len(results)} 件")
+    print(f"既存プロフィール: {len(existing_profiles)} 件")
+    print(f"新規取得: {len(new_results)} 件")
+    print(f"合計プロフィール: {len(all_profiles)} 件")
     print(f"保存先: {OUTPUT_FILE}")
     print(f"{'='*70}\n")
 

@@ -82,6 +82,7 @@ LinkedIn Premium会員: {is_premium}
    - 31-35歳: 20点
    - 36-40歳: 15点
    - 41歳以上: **即座に除外（スコア0、decision: "skip"）**
+   - **年齢不明（推定不可）の場合: 0点だが除外しない（他の項目でスコアリング）**
 
 2. IT業界経験評価（0-40点）
    - キーワード: SIer, ITコンサルタント, エンジニア, DXエンジニア, システム開発, クラウド, AI, データサイエンス
@@ -123,6 +124,7 @@ LinkedIn Premium会員: {is_premium}
 【重要な注意事項】
 - LinkedIn Premium会員（is_premium: "True"または"yes"）は必ず除外（decision: "skip"、total_score: 0）
 - 41歳以上は必ず除外（decision: "skip"、total_score: 0）
+- **年齢不明（estimated_age: null）の場合は除外しない。age_score: 0 として他の項目でスコアリング**
 - 経営層（社長、CEO、取締役等）は必ず除外（decision: "skip"、total_score: 0）
 - HR・人材関係（リクルーター、採用担当等）は必ず除外（decision: "skip"、total_score: 0）
 - フューチャー株式会社またはフューチャーアーキテクト株式会社に現在勤務している者は必ず除外（decision: "skip"、total_score: 0）
@@ -608,14 +610,40 @@ def log_message(name, profile_url, result, error="", details=""):
         })
 
 def send_all_messages(driver, targets, max_messages):
-    """全メッセージを送信"""
+    """全メッセージを送信（既送信者を除外）"""
 
     print(f"{'='*70}")
     print(f"📨 Step 5-6: メッセージ生成・送信")
     print(f"{'='*70}")
-    print(f"送信対象: {len(targets)} 件")
-    print(f"上限: {max_messages} 件")
+
+    # 既送信者を確認（result="success"のみ除外、失敗は再送可能）
+    already_sent_urls = set()
+
+    if os.path.exists(MESSAGE_LOG_FILE):
+        try:
+            with open(MESSAGE_LOG_FILE, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if row.get('result') == 'success':
+                        already_sent_urls.add(row.get('profile_url', ''))
+            print(f"📂 過去の送信履歴: {len(already_sent_urls)} 件（成功のみ）")
+        except Exception as e:
+            print(f"⚠️ 送信履歴読み込みエラー: {e}")
+
+    # 既送信者を除外
+    original_count = len(targets)
+    targets = [t for t in targets if t.get('profile_url', '') not in already_sent_urls]
+    excluded_count = original_count - len(targets)
+
+    print(f"👥 スコアリング通過者: {original_count} 件")
+    print(f"✅ 既にメッセージ送信済み: {excluded_count} 件")
+    print(f"🆕 今回の送信対象: {len(targets)} 件")
+    print(f"📊 上限設定: {max_messages} 件")
     print(f"{'='*70}\n")
+
+    if not targets:
+        print("⚠️ 送信対象が0件です（全員送信済み）\n")
+        return
 
     # 上限件数まで絞り込み
     targets = targets[:max_messages]
