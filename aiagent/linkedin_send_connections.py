@@ -116,10 +116,25 @@ def log_request(name, result, error=""):
 def send_connections_on_page(driver, current_total=0, max_requests=50):
     """現在の検索結果ページ上で全ての候補者につながり申請"""
 
-    # ページを下までスクロール
-    for _ in range(3):
-        driver.find_element(By.TAG_NAME, "body").send_keys(Keys.END)
-        time.sleep(1)
+    # ページを下までスクロール（改善版：より確実に全候補者を読み込む）
+    print("   📜 ページをスクロール中...")
+    last_height = driver.execute_script("return document.body.scrollHeight")
+
+    for i in range(10):  # 最大10回スクロール
+        # JavaScriptで段階的にスクロール
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(2)  # 動的コンテンツの読み込みを待つ
+
+        # 新しい高さを取得
+        new_height = driver.execute_script("return document.body.scrollHeight")
+
+        # ページの高さが変わらなくなったら終了
+        if new_height == last_height:
+            print(f"   ✓ スクロール完了（{i+1}回目で到達）")
+            break
+        last_height = new_height
+
+    time.sleep(2)  # 最終的な読み込みを待つ
 
     # 候補者カードを取得してボタンをクリック
     script = """
@@ -154,8 +169,12 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
         for (const btn of buttons) {
             const text = btn.textContent.trim();
             const ariaLabel = btn.getAttribute('aria-label') || '';
+            const textLower = text.toLowerCase();
+            const ariaLower = ariaLabel.toLowerCase();
 
-            if (text.includes('つながりを申請') || text.includes('Connect')) {
+            // 柔軟なボタン判定: 「つながる」「つながり申請」「Connect」などに対応
+            if (text.includes('つながり') || text.includes('つながる') ||
+                textLower.includes('connect') || ariaLower.includes('connect')) {
                 hasConnectButton = true;
                 break;
             }
@@ -259,9 +278,12 @@ def send_connections_on_page(driver, current_total=0, max_requests=50):
 
                 for (const btn of buttons) {{
                     const text = btn.textContent.trim();
+                    const textLower = text.toLowerCase();
                     result.buttonTexts.push(text);
 
-                    if (text.includes('つながりを申請') || text.includes('Connect')) {{
+                    // 柔軟なボタン判定: 「つながる」「つながり申請」「Connect」などに対応
+                    if (text.includes('つながり') || text.includes('つながる') ||
+                        textLower.includes('connect')) {{
                         result.connectButtonFound = true;
 
                         // ボタンをスクロールして表示
