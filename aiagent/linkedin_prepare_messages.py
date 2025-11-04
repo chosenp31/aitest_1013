@@ -71,16 +71,20 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 MESSAGE_TEMPLATES = {
     "依田": """{name}さん
 
-いきなりすみません
-KPMGコンサルティングの依田と申します。
+突然のご連絡失礼いたします。
+KPMGコンサルティングの依田と申します🙇‍♂️
 
-将来的に人材領域にも関わりたいと考えており、IT・コンサル分野でご活躍されている方々のお話を伺いながら、知見を広げたいと思っています。
+異なるバックグラウンドを持つ方々との情報交換の機会を探しており、
+もしよろしければ、お互いのキャリアや業界の話をざっくばらんにお話しできればと思いご連絡させていただきました。
 
-自分からは以下のようなトピックを共有できます：
-・フューチャーアーキテクト／KPMGでのプロジェクト経験
-・転職時に検討したBIG4＋アクセンチュア／BCGの比較や選考情報
+私からは以下のようなトピックをお話しできるかと思います。
+・KPMG/フューチャーアーキテクトでのプロジェクト経験
+デジタル戦略におけるロードマップ策定、AX人材確保計画策定、IoTシステム導入計画策定・実行支援、基幹システム刷新におけるPMOなど
+・転職時に検討したBIG4、アクセンチュアの比較や選考情報
 
-もしご関心あれば、カジュアルにオンラインでお話できると嬉しいです！よろしくお願いします！""",
+ご興味があれば、30分程度のオンラインでのカジュアルな
+お話の機会をいただけますと嬉しいです！
+よろしくお願いいたします🙇‍♂️""",
 
     "桜井": """{name}さん
 
@@ -639,49 +643,11 @@ def score_candidate(candidate):
 # Step 4: メッセージ生成
 # ==============================
 def generate_message(name, account_name):
-    """メッセージを生成（アカウント別）"""
+    """メッセージを生成（アカウント別・固定テンプレート）"""
     # アカウント別のテンプレートを取得
     template = MESSAGE_TEMPLATES.get(account_name, MESSAGE_TEMPLATES["依田"])
-    base_message = template.format(name=name)
-
-    # 桜井・田中の場合はシンプルなメッセージなのでテンプレートをそのまま使用
-    if account_name in ["桜井", "田中"]:
-        return base_message
-
-    # 依田の場合のみOpenAI APIでバリエーションを生成
-    prompt = f"""
-以下のメッセージテンプレートを元に、自然で親しみやすいメッセージを生成してください。
-大幅な変更は不要です。語尾や表現を少しだけ変えてください。
-
-【テンプレート】
-{base_message}
-
-【要件】
-- 名前は必ず「{name}さん」で始める
-- 内容の構造は基本的にテンプレート通り
-- 語尾や接続詞を少しだけ自然にバリエーションを付ける
-- 箇条書き（・）はそのまま維持
-- 全体の長さはテンプレートと同程度
-- 他の説明は一切不要、メッセージ本文のみ出力
-"""
-
-    try:
-        response = client.chat.completions.create(
-            model=OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": "あなたはメッセージ生成アシスタントです。"},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.5,
-            max_tokens=400
-        )
-
-        message = response.choices[0].message.content.strip()
-        return message
-
-    except Exception as e:
-        print(f"   ⚠️ メッセージ生成エラー: {e}")
-        return base_message
+    message = template.format(name=name)
+    return message
 
 # ==============================
 # メイン処理
@@ -912,10 +878,6 @@ def main(account_name, paths, start_date, use_scoring, min_score):
                     'message_generated': 'yes',
                     'message_generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 })
-
-                # 依田の場合のみAPI呼び出しがあるので待機
-                if account_name == "依田":
-                    time.sleep(1)
 
             # generated_messages.csv に追記
             file_exists = os.path.exists(paths['generated_messages_file'])
