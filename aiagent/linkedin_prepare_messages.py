@@ -1,5 +1,6 @@
 # aiagent/linkedin_prepare_messages.py
 # プロフィール取得 → スコアリング → メッセージ生成 → CSV保存
+# profiles_master.csv で統合管理
 
 import os
 import sys
@@ -57,11 +58,9 @@ def get_account_paths(account_name):
     return {
         'account_dir': account_dir,
         'cookie_file': os.path.join(account_dir, "linkedin_cookies.pkl"),
-        'connections_file': os.path.join(account_dir, "connections_list.csv"),
+        'profiles_master_file': os.path.join(account_dir, "profiles_master.csv"),
         'profiles_file': os.path.join(account_dir, "profiles_detailed.csv"),
-        'scored_file': os.path.join(account_dir, "scored_connections.json"),
-        'generated_messages_file': os.path.join(account_dir, "generated_messages.csv"),
-        'message_log_file': os.path.join(account_dir, "message_logs.csv")
+        'generated_messages_file': os.path.join(account_dir, "generated_messages.csv")
     }
 
 # OpenAI設定
@@ -176,6 +175,66 @@ if not OPENAI_API_KEY:
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 # ==============================
+# profiles_master.csv 管理
+# ==============================
+def load_profiles_master(profiles_master_file):
+    """profiles_master.csv を読み込む"""
+    profiles_master = {}
+
+    if os.path.exists(profiles_master_file):
+        try:
+            with open(profiles_master_file, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    profile_url = row.get('profile_url', '')
+                    if profile_url:
+                        profiles_master[profile_url] = row
+        except Exception as e:
+            print(f"⚠️ profiles_master.csv 読み込みエラー: {e}\n")
+
+    return profiles_master
+
+def save_profiles_master(profiles_master, profiles_master_file):
+    """profiles_master.csv を保存"""
+    fieldnames = [
+        "profile_url", "name", "connected_date",
+        "profile_fetched", "profile_fetched_at",
+        "total_score", "scoring_decision",
+        "message_generated", "message_generated_at",
+        "message_sent_status", "message_sent_at", "last_send_error"
+    ]
+
+    with open(profiles_master_file, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+
+        # profile_url でソート
+        sorted_profiles = sorted(profiles_master.values(), key=lambda x: x.get('profile_url', ''))
+        writer.writerows(sorted_profiles)
+
+def update_profile_master(profiles_master, profile_url, updates):
+    """profiles_master の特定エントリを更新"""
+    if profile_url not in profiles_master:
+        # 新規エントリ
+        profiles_master[profile_url] = {
+            "profile_url": profile_url,
+            "name": "",
+            "connected_date": "",
+            "profile_fetched": "no",
+            "profile_fetched_at": "",
+            "total_score": "",
+            "scoring_decision": "",
+            "message_generated": "no",
+            "message_generated_at": "",
+            "message_sent_status": "pending",
+            "message_sent_at": "",
+            "last_send_error": ""
+        }
+
+    # 更新
+    profiles_master[profile_url].update(updates)
+
+# ==============================
 # ログイン
 # ==============================
 def login(account_name, cookie_file):
@@ -241,13 +300,13 @@ def login(account_name, cookie_file):
     return driver
 
 # ==============================
-# Step 2: つながり取得
+# Step 1: つながり取得
 # ==============================
 def get_connections(driver, start_date):
     """つながりリストを取得（日付フィルタ付き）"""
 
     print(f"{'='*70}")
-    print(f"📋 Step 2: つながり取得")
+    print(f"📋 Step 1: つながり取得")
     print(f"{'='*70}")
     print(f"開始日: {start_date} 以降")
     print(f"{'='*70}\n")
@@ -351,7 +410,7 @@ def get_connections(driver, start_date):
     return filtered_connections
 
 # ==============================
-# Step 3: プロフィール詳細取得
+# Step 2: プロフィール詳細取得
 # ==============================
 def get_profile_details(driver, profile_url, name):
     """プロフィール詳細を取得"""
@@ -515,90 +574,8 @@ def get_profile_details(driver, profile_url, name):
             'skills': ''
         }
 
-def get_all_profiles(driver, connections, profiles_file):
-    """全プロフィールの詳細を取得（重複回避）"""
-
-    print(f"{'='*70}")
-    print(f"📊 Step 3: プロフィール詳細取得")
-    print(f"{'='*70}")
-    print(f"対象者数: {len(connections)} 件")
-    print(f"{'='*70}\n")
-
-    # 既存のプロフィールデータを読み込み
-    existing_profiles = {}
-    existing_count = 0
-
-    if os.path.exists(profiles_file):
-        try:
-            with open(profiles_file, "r", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    profile_url = row.get('profile_url', '')
-                    if profile_url:
-                        existing_profiles[profile_url] = row
-                        existing_count += 1
-
-            print(f"📂 既存データ読み込み: {existing_count} 件\n")
-        except Exception as e:
-            print(f"⚠️ 既存データ読み込みエラー: {e}\n")
-
-    # 新規取得が必要なつながりをフィルタリング
-    new_connections = []
-    skipped_count = 0
-
-    for conn in connections:
-        profile_url = conn.get('profile_url', '')
-        if profile_url and profile_url not in existing_profiles:
-            new_connections.append(conn)
-        elif profile_url:
-            skipped_count += 1
-
-    print(f"📋 取得状況:")
-    print(f"   既存: {existing_count} 件")
-    print(f"   スキップ: {skipped_count} 件")
-    print(f"   新規取得: {len(new_connections)} 件\n")
-
-    # 新規プロフィールを取得
-    new_profiles = []
-
-    for idx, conn in enumerate(new_connections, start=1):
-        name = conn.get('name', '不明')
-        profile_url = conn.get('profile_url', '')
-
-        if not profile_url:
-            print(f"[{idx}/{len(new_connections)}] ⚠️ {name} - URLなし、スキップ\n")
-            continue
-
-        print(f"[{idx}/{len(new_connections)}] 🔍 {name} のプロフィールを取得中...")
-
-        details = get_profile_details(driver, profile_url, name)
-        new_profiles.append(details)
-
-        if details.get('is_premium'):
-            print(f"   🔶 LinkedIn Premium会員")
-        print(f"   ✅ 取得完了\n")
-
-        # 遅延
-        if idx < len(new_connections):
-            time.sleep(random.uniform(3, 6))
-
-    # 既存 + 新規を結合
-    all_profiles = list(existing_profiles.values()) + new_profiles
-
-    # CSV保存
-    with open(profiles_file, "w", newline="", encoding="utf-8") as f:
-        fieldnames = ["name", "profile_url", "headline", "location", "is_premium", "experiences", "education", "skills"]
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(all_profiles)
-
-    print(f"💾 保存完了: {profiles_file}")
-    print(f"   合計: {len(all_profiles)} 件（既存 {existing_count} + 新規 {len(new_profiles)}）\n")
-
-    return all_profiles
-
 # ==============================
-# Step 4: AIスコアリング
+# Step 3: AIスコアリング
 # ==============================
 def score_candidate(candidate):
     """OpenAI APIで候補者をスコアリング"""
@@ -643,15 +620,11 @@ def score_candidate(candidate):
         else:
             result = json.loads(result_text)
 
-        return {
-            **candidate,
-            **result
-        }
+        return result
 
     except Exception as e:
         print(f"   ⚠️ APIエラー ({name}): {e}")
         return {
-            **candidate,
             "estimated_age": None,
             "age_reasoning": "",
             "age_score": 0,
@@ -662,92 +635,8 @@ def score_candidate(candidate):
             "reason": f"APIエラー: {e}"
         }
 
-def score_all_candidates(profiles, min_score):
-    """全候補者をスコアリング"""
-
-    print(f"{'='*70}")
-    print(f"🧠 Step 4: AIスコアリング")
-    print(f"{'='*70}")
-    print(f"候補者数: {len(profiles)} 件")
-    print(f"最低スコア: {min_score} 点")
-    print(f"{'='*70}\n")
-
-    results = []
-
-    for idx, profile in enumerate(profiles, start=1):
-        name = profile.get('name', '不明')
-        print(f"[{idx}/{len(profiles)}] 📊 {name} をスコアリング中...")
-
-        scored = score_candidate(profile)
-        results.append(scored)
-
-        decision = scored.get('decision', 'skip')
-        total_score = scored.get('total_score', 0)
-        reason = scored.get('reason', '')
-
-        if decision == "send":
-            print(f"   ✅ 送信対象: {total_score}点")
-        else:
-            print(f"   ⚪ スキップ: {total_score}点")
-        print(f"   理由: {reason}\n")
-
-        time.sleep(1)
-
-    # 送信対象を抽出
-    send_targets = [r for r in results if r.get('decision') == 'send' and r.get('total_score', 0) >= min_score]
-
-    print(f"✅ 送信対象: {len(send_targets)} 件\n")
-
-    return send_targets
-
 # ==============================
-# Step 5: 送信済み除外
-# ==============================
-def filter_already_sent(targets, message_log_file):
-    """送信済みを除外（result="success"のみ）"""
-
-    print(f"{'='*70}")
-    print(f"🔍 Step 5: 送信済みチェック")
-    print(f"{'='*70}\n")
-
-    # 送信済みのprofile_urlをセット化
-    sent_urls = set()
-
-    if os.path.exists(message_log_file):
-        try:
-            with open(message_log_file, "r", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    result = row.get('result', '')
-                    profile_url = row.get('profile_url', '')
-                    # result="success"のみ除外（失敗者は再送信対象）
-                    if result == "success" and profile_url:
-                        sent_urls.add(profile_url)
-
-            print(f"📂 送信済みデータ読み込み: {len(sent_urls)} 件（success のみ）\n")
-        except Exception as e:
-            print(f"⚠️ 送信ログ読み込みエラー: {e}\n")
-
-    # 送信済みを除外
-    filtered_targets = []
-    skipped_count = 0
-
-    for target in targets:
-        profile_url = target.get('profile_url', '')
-        if profile_url not in sent_urls:
-            filtered_targets.append(target)
-        else:
-            skipped_count += 1
-
-    print(f"📋 フィルタリング結果:")
-    print(f"   元の送信対象: {len(targets)} 件")
-    print(f"   既送信スキップ: {skipped_count} 件")
-    print(f"   最終送信対象: {len(filtered_targets)} 件\n")
-
-    return filtered_targets
-
-# ==============================
-# Step 6: メッセージ生成
+# Step 4: メッセージ生成
 # ==============================
 def generate_message(name, account_name):
     """メッセージを生成（アカウント別）"""
@@ -794,58 +683,6 @@ def generate_message(name, account_name):
         print(f"   ⚠️ メッセージ生成エラー: {e}")
         return base_message
 
-def generate_all_messages(targets, generated_messages_file, account_name):
-    """全メッセージを生成してCSV保存"""
-
-    print(f"{'='*70}")
-    print(f"💬 Step 6: メッセージ生成")
-    print(f"{'='*70}")
-    print(f"対象者数: {len(targets)} 件")
-    print(f"{'='*70}\n")
-
-    messages_to_save = []
-
-    for idx, target in enumerate(targets, start=1):
-        name = target.get('name', '不明')
-        profile_url = target.get('profile_url', '')
-        score = target.get('total_score', 0)
-
-        if not profile_url:
-            print(f"[{idx}/{len(targets)}] ⚠️ {name} - URLなし、スキップ\n")
-            continue
-
-        print(f"[{idx}/{len(targets)}] 💬 {name} (スコア: {score}点) のメッセージを生成中...")
-        message = generate_message(name, account_name)
-        print(f"   ✅ 生成完了\n")
-
-        messages_to_save.append({
-            'profile_url': profile_url,
-            'name': name,
-            'total_score': score,
-            'message': message,
-            'generated_at': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        })
-
-        # 依田の場合のみAPI呼び出しがあるので待機
-        if account_name == "依田":
-            time.sleep(1)
-
-    # CSV保存
-    with open(generated_messages_file, "w", newline="", encoding="utf-8") as f:
-        fieldnames = ["profile_url", "name", "total_score", "message", "generated_at"]
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(messages_to_save)
-
-    print(f"{'='*70}")
-    print(f"💾 メッセージ保存完了")
-    print(f"{'='*70}")
-    print(f"ファイル: {generated_messages_file}")
-    print(f"件数: {len(messages_to_save)} 件")
-    print(f"{'='*70}\n")
-
-    return messages_to_save
-
 # ==============================
 # メイン処理
 # ==============================
@@ -863,63 +700,255 @@ def main(account_name, paths, start_date, use_scoring, min_score):
     driver = login(account_name, paths['cookie_file'])
 
     try:
-        # Step 2: つながり取得
+        # profiles_master.csv 読み込み
+        print(f"{'='*70}")
+        print(f"📂 profiles_master.csv 読み込み")
+        print(f"{'='*70}\n")
+
+        profiles_master = load_profiles_master(paths['profiles_master_file'])
+        print(f"✅ 既存レコード: {len(profiles_master)} 件\n")
+
+        # Step 1: つながり取得
         connections = get_connections(driver, start_date)
 
         if not connections:
             print("⚠️ つながりが見つかりません。処理を終了します。\n")
+            driver.quit()
             return
 
-        # Step 3: プロフィール詳細取得
-        profiles = get_all_profiles(driver, connections, paths['profiles_file'])
+        # 新規つながりを profiles_master に追加
+        print(f"{'='*70}")
+        print(f"🆕 新規つながりを profiles_master に登録")
+        print(f"{'='*70}\n")
 
-        if not profiles:
-            print("⚠️ プロフィールが取得できませんでした。処理を終了します。\n")
-            return
+        new_count = 0
+        for conn in connections:
+            profile_url = conn['profile_url']
+            if profile_url not in profiles_master:
+                update_profile_master(profiles_master, profile_url, {
+                    'name': conn['name'],
+                    'connected_date': conn['connected_date'],
+                    'profile_fetched': 'no'
+                })
+                new_count += 1
 
-        # Step 4: AIスコアリング（オプション）
+        print(f"✅ 新規追加: {new_count} 件\n")
+        save_profiles_master(profiles_master, paths['profiles_master_file'])
+
+        # Step 2: プロフィール詳細取得（profile_fetched=no のみ）
+        profiles_to_fetch = [p for p in profiles_master.values() if p.get('profile_fetched') == 'no']
+
+        if profiles_to_fetch:
+            print(f"{'='*70}")
+            print(f"📊 Step 2: プロフィール詳細取得")
+            print(f"{'='*70}")
+            print(f"対象者数: {len(profiles_to_fetch)} 件")
+            print(f"{'='*70}\n")
+
+            for idx, profile in enumerate(profiles_to_fetch, start=1):
+                name = profile['name']
+                profile_url = profile['profile_url']
+
+                print(f"[{idx}/{len(profiles_to_fetch)}] 🔍 {name} のプロフィールを取得中...")
+
+                details = get_profile_details(driver, profile_url, name)
+
+                if details.get('is_premium'):
+                    print(f"   🔶 LinkedIn Premium会員")
+                print(f"   ✅ 取得完了\n")
+
+                # profiles_detailed.csv に保存（参照用）
+                profiles_file = paths['profiles_file']
+                file_exists = os.path.exists(profiles_file)
+                with open(profiles_file, "a", newline="", encoding="utf-8") as f:
+                    fieldnames = ["name", "profile_url", "headline", "location", "is_premium", "experiences", "education", "skills"]
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    if not file_exists:
+                        writer.writeheader()
+                    writer.writerow(details)
+
+                # profiles_master 更新
+                update_profile_master(profiles_master, profile_url, {
+                    'profile_fetched': 'yes',
+                    'profile_fetched_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                })
+
+                # 遅延
+                if idx < len(profiles_to_fetch):
+                    time.sleep(random.uniform(3, 6))
+
+            save_profiles_master(profiles_master, paths['profiles_master_file'])
+            print(f"💾 profiles_master.csv 更新完了\n")
+
+        # Step 3: AIスコアリング（scoring_decision が未設定のみ）
         if use_scoring:
-            send_targets = score_all_candidates(profiles, min_score)
+            profiles_to_score = []
 
-            if not send_targets:
-                print("⚠️ 送信対象が0件です。処理を終了します。\n")
-                return
+            # profiles_detailed.csv から詳細情報を読み込み
+            profile_details_map = {}
+            if os.path.exists(paths['profiles_file']):
+                with open(paths['profiles_file'], "r", encoding="utf-8") as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        profile_details_map[row['profile_url']] = row
+
+            for profile_url, profile in profiles_master.items():
+                if profile.get('profile_fetched') == 'yes' and not profile.get('scoring_decision'):
+                    if profile_url in profile_details_map:
+                        detail = profile_details_map[profile_url]
+                        profiles_to_score.append({
+                            'profile_url': profile_url,
+                            'name': profile['name'],
+                            'headline': detail.get('headline', ''),
+                            'location': detail.get('location', ''),
+                            'is_premium': detail.get('is_premium', False),
+                            'experiences': detail.get('experiences', ''),
+                            'education': detail.get('education', ''),
+                            'skills': detail.get('skills', '')
+                        })
+
+            if profiles_to_score:
+                print(f"{'='*70}")
+                print(f"🧠 Step 3: AIスコアリング")
+                print(f"{'='*70}")
+                print(f"候補者数: {len(profiles_to_score)} 件")
+                print(f"最低スコア: {min_score} 点")
+                print(f"{'='*70}\n")
+
+                for idx, candidate in enumerate(profiles_to_score, start=1):
+                    name = candidate['name']
+                    profile_url = candidate['profile_url']
+
+                    print(f"[{idx}/{len(profiles_to_score)}] 📊 {name} をスコアリング中...")
+
+                    scored = score_candidate(candidate)
+
+                    decision = scored.get('decision', 'skip')
+                    total_score = scored.get('total_score', 0)
+                    reason = scored.get('reason', '')
+
+                    if decision == "send":
+                        print(f"   ✅ 送信対象: {total_score}点")
+                    else:
+                        print(f"   ⚪ スキップ: {total_score}点")
+                    print(f"   理由: {reason}\n")
+
+                    # profiles_master 更新
+                    update_profile_master(profiles_master, profile_url, {
+                        'total_score': str(total_score),
+                        'scoring_decision': decision
+                    })
+
+                    time.sleep(1)
+
+                save_profiles_master(profiles_master, paths['profiles_master_file'])
+                print(f"💾 profiles_master.csv 更新完了\n")
         else:
-            # スコアリングなし: 全員を送信対象とする
+            # スコアリングなし: 全員を send に
             print(f"{'='*70}")
             print(f"⚠️  スコアリングをスキップ（全員に送信）")
             print(f"{'='*70}\n")
 
-            send_targets = []
-            for profile in profiles:
-                send_targets.append({
-                    'name': profile.get('name', '不明'),
-                    'profile_url': profile.get('profile_url', ''),
-                    'total_score': 0,  # スコアなし
-                    'decision': 'send'
-                })
+            for profile_url, profile in profiles_master.items():
+                if profile.get('profile_fetched') == 'yes' and not profile.get('scoring_decision'):
+                    update_profile_master(profiles_master, profile_url, {
+                        'total_score': '0',
+                        'scoring_decision': 'send'
+                    })
 
-            print(f"✅ 送信対象: {len(send_targets)} 件（スコアリングなし）\n")
+            save_profiles_master(profiles_master, paths['profiles_master_file'])
+            print(f"✅ 全員を送信対象に設定しました\n")
 
-        # Step 5: 送信済みを除外
-        send_targets = filter_already_sent(send_targets, paths['message_log_file'])
+        # Step 4: 送信対象抽出（scoring_decision=send かつ message_sent_status≠success）
+        send_targets = []
+        for profile_url, profile in profiles_master.items():
+            if (profile.get('scoring_decision') == 'send' and
+                profile.get('message_sent_status') != 'success'):
+                send_targets.append(profile)
 
         if not send_targets:
-            print("⚠️ 送信対象が0件です（全て送信済み）。処理を終了します。\n")
+            print("⚠️ 送信対象が0件です。処理を終了します。\n")
+            driver.quit()
             return
 
-        # Step 6: メッセージ生成・保存
-        generated_messages = generate_all_messages(send_targets, paths['generated_messages_file'], account_name)
-
-        # 生成されたメッセージを一覧表示
         print(f"{'='*70}")
-        print(f"📋 生成されたメッセージ一覧")
+        print(f"📋 送信対象")
+        print(f"{'='*70}")
+        print(f"対象者数: {len(send_targets)} 件")
         print(f"{'='*70}\n")
 
-        for idx, msg_data in enumerate(generated_messages, start=1):
-            print(f"--- [{idx}/{len(generated_messages)}] {msg_data['name']} (スコア: {msg_data['total_score']}点) ---")
-            print(f"{msg_data['message']}")
-            print()
+        # Step 5: メッセージ生成（message_generated=no のみ）
+        messages_to_generate = [p for p in send_targets if p.get('message_generated') != 'yes']
+
+        if messages_to_generate:
+            print(f"{'='*70}")
+            print(f"💬 Step 4: メッセージ生成")
+            print(f"{'='*70}")
+            print(f"対象者数: {len(messages_to_generate)} 件")
+            print(f"{'='*70}\n")
+
+            # generated_messages.csv に保存
+            messages_data = []
+
+            for idx, profile in enumerate(messages_to_generate, start=1):
+                name = profile['name']
+                profile_url = profile['profile_url']
+                score = profile.get('total_score', '0')
+
+                print(f"[{idx}/{len(messages_to_generate)}] 💬 {name} (スコア: {score}点) のメッセージを生成中...")
+                message = generate_message(name, account_name)
+                print(f"   ✅ 生成完了\n")
+
+                messages_data.append({
+                    'profile_url': profile_url,
+                    'name': name,
+                    'total_score': score,
+                    'message': message,
+                    'generated_at': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                })
+
+                # profiles_master 更新
+                update_profile_master(profiles_master, profile_url, {
+                    'message_generated': 'yes',
+                    'message_generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                })
+
+                # 依田の場合のみAPI呼び出しがあるので待機
+                if account_name == "依田":
+                    time.sleep(1)
+
+            # generated_messages.csv に追記
+            file_exists = os.path.exists(paths['generated_messages_file'])
+            with open(paths['generated_messages_file'], "a", newline="", encoding="utf-8") as f:
+                fieldnames = ["profile_url", "name", "total_score", "message", "generated_at"]
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                if not file_exists:
+                    writer.writeheader()
+                writer.writerows(messages_data)
+
+            save_profiles_master(profiles_master, paths['profiles_master_file'])
+            print(f"💾 メッセージ保存完了: {paths['generated_messages_file']}\n")
+
+        # 生成済みメッセージを一覧表示
+        print(f"{'='*70}")
+        print(f"📋 生成済みメッセージ一覧")
+        print(f"{'='*70}\n")
+
+        # generated_messages.csv から送信対象のメッセージを読み込み
+        messages_map = {}
+        if os.path.exists(paths['generated_messages_file']):
+            with open(paths['generated_messages_file'], "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    messages_map[row['profile_url']] = row
+
+        for idx, profile in enumerate(send_targets, start=1):
+            profile_url = profile['profile_url']
+            if profile_url in messages_map:
+                msg = messages_map[profile_url]
+                print(f"--- [{idx}/{len(send_targets)}] {msg['name']} (スコア: {msg['total_score']}点) ---")
+                print(f"{msg['message']}")
+                print()
 
     except KeyboardInterrupt:
         print("\n\n⚠️ ユーザーによって処理が中断されました\n")

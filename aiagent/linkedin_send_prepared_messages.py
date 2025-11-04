@@ -1,5 +1,6 @@
 # aiagent/linkedin_send_prepared_messages.py
 # 生成済みメッセージを読み込んで送信
+# profiles_master.csv で統合管理
 
 import os
 import sys
@@ -59,9 +60,52 @@ def get_account_paths(account_name):
     return {
         'account_dir': account_dir,
         'cookie_file': os.path.join(account_dir, "linkedin_cookies.pkl"),
-        'generated_messages_file': os.path.join(account_dir, "generated_messages.csv"),
-        'message_log_file': os.path.join(account_dir, "message_logs.csv")
+        'profiles_master_file': os.path.join(account_dir, "profiles_master.csv"),
+        'generated_messages_file': os.path.join(account_dir, "generated_messages.csv")
     }
+
+# ==============================
+# profiles_master.csv 管理
+# ==============================
+def load_profiles_master(profiles_master_file):
+    """profiles_master.csv を読み込む"""
+    profiles_master = {}
+
+    if os.path.exists(profiles_master_file):
+        try:
+            with open(profiles_master_file, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    profile_url = row.get('profile_url', '')
+                    if profile_url:
+                        profiles_master[profile_url] = row
+        except Exception as e:
+            print(f"⚠️ profiles_master.csv 読み込みエラー: {e}\n")
+
+    return profiles_master
+
+def save_profiles_master(profiles_master, profiles_master_file):
+    """profiles_master.csv を保存"""
+    fieldnames = [
+        "profile_url", "name", "connected_date",
+        "profile_fetched", "profile_fetched_at",
+        "total_score", "scoring_decision",
+        "message_generated", "message_generated_at",
+        "message_sent_status", "message_sent_at", "last_send_error"
+    ]
+
+    with open(profiles_master_file, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+
+        # profile_url でソート
+        sorted_profiles = sorted(profiles_master.values(), key=lambda x: x.get('profile_url', ''))
+        writer.writerows(sorted_profiles)
+
+def update_profile_master(profiles_master, profile_url, updates):
+    """profiles_master の特定エントリを更新"""
+    if profile_url in profiles_master:
+        profiles_master[profile_url].update(updates)
 
 # ==============================
 # ログイン
@@ -129,65 +173,6 @@ def login(account_name, cookie_file):
     return driver
 
 # ==============================
-# 生成済みメッセージ読み込み
-# ==============================
-def load_generated_messages(generated_messages_file, message_log_file):
-    """生成済みメッセージを読み込み（未送信のみ）"""
-
-    print(f"{'='*70}")
-    print(f"📂 Step 1: 生成済みメッセージ読み込み")
-    print(f"{'='*70}\n")
-
-    if not os.path.exists(generated_messages_file):
-        print(f"❌ エラー: {generated_messages_file} が見つかりません")
-        print("⚠️  先に linkedin_prepare_messages.py を実行してメッセージを生成してください\n")
-        return []
-
-    # 生成済みメッセージを読み込み
-    messages = []
-    with open(generated_messages_file, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            messages.append(row)
-
-    print(f"📋 生成済みメッセージ: {len(messages)} 件\n")
-
-    # 送信済みのURLをセット化
-    sent_urls = set()
-    if os.path.exists(message_log_file):
-        try:
-            with open(message_log_file, "r", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    result = row.get('result', '')
-                    profile_url = row.get('profile_url', '')
-                    # result="success"のみ除外
-                    if result == "success" and profile_url:
-                        sent_urls.add(profile_url)
-
-            print(f"📂 送信済みデータ読み込み: {len(sent_urls)} 件（success のみ）\n")
-        except Exception as e:
-            print(f"⚠️ 送信ログ読み込みエラー: {e}\n")
-
-    # 未送信メッセージをフィルタリング
-    unsent_messages = []
-    skipped_count = 0
-
-    for msg in messages:
-        profile_url = msg.get('profile_url', '')
-        if profile_url not in sent_urls:
-            unsent_messages.append(msg)
-        else:
-            skipped_count += 1
-
-    print(f"📋 フィルタリング結果:")
-    print(f"   生成済み: {len(messages)} 件")
-    print(f"   既送信スキップ: {skipped_count} 件")
-    print(f"   未送信: {len(unsent_messages)} 件\n")
-
-    return unsent_messages
-
-# ==============================
 # メッセージ送信
 # ==============================
 def send_message(driver, profile_url, name, message):
@@ -224,7 +209,7 @@ def send_message(driver, profile_url, name, message):
                 pass
 
         if not message_btn:
-            return "error", "メッセージボタン未検出", "button_not_found"
+            return "error", "メッセージボタン未検出"
 
         if not message_btn.is_displayed():
             driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", message_btn)
@@ -244,7 +229,7 @@ def send_message(driver, profile_url, name, message):
             )
             time.sleep(1)
         except TimeoutException:
-            return "error", "ポップアップ表示タイムアウト", "popup_timeout"
+            return "error", "ポップアップ表示タイムアウト"
 
         # メッセージ入力欄を探す
         message_box = None
@@ -264,7 +249,7 @@ def send_message(driver, profile_url, name, message):
                 pass
 
         if not message_box:
-            return "error", "メッセージ入力欄が見つかりません", "message_box_not_found"
+            return "error", "メッセージ入力欄が見つかりません"
 
         # メッセージを入力
         driver.execute_script("arguments[0].focus();", message_box)
@@ -276,7 +261,7 @@ def send_message(driver, profile_url, name, message):
             message_box.send_keys(message)
             time.sleep(0.5)
         except Exception as e:
-            return "error", f"メッセージ入力エラー: {e}", "message_input_failed"
+            return "error", f"メッセージ入力エラー: {e}"
 
         # 送信ボタンを探す
         send_btn = None
@@ -296,7 +281,7 @@ def send_message(driver, profile_url, name, message):
                 pass
 
         if not send_btn:
-            return "error", "送信ボタンが見つかりません", "send_button_not_found"
+            return "error", "送信ボタンが見つかりません"
 
         # 送信ボタンが活性化されるまで待機
         button_enabled = False
@@ -372,106 +357,12 @@ def send_message(driver, profile_url, name, message):
             # 次の送信前に2秒待機
             time.sleep(2)
 
-            return "success", "", "sent"
+            return "success", ""
         else:
-            return "error", "送信ボタンが活性化されませんでした", "button_not_enabled"
+            return "error", "送信ボタンが活性化されませんでした"
 
     except Exception as e:
-        return "error", f"予期しないエラー: {e}", "unexpected_error"
-
-def log_message(name, profile_url, result, message_log_file, error="", details=""):
-    """送信結果をログに記録"""
-    file_exists = os.path.exists(message_log_file)
-
-    with open(message_log_file, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["date", "name", "profile_url", "result", "error", "details"])
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow({
-            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "name": name,
-            "profile_url": profile_url,
-            "result": result,
-            "error": error,
-            "details": details
-        })
-
-# ==============================
-# メッセージ送信処理
-# ==============================
-def send_all_messages(driver, messages, max_messages, message_log_file):
-    """全メッセージを送信"""
-
-    print(f"{'='*70}")
-    print(f"📨 Step 2: メッセージ送信")
-    print(f"{'='*70}")
-    print(f"送信対象: {len(messages)} 件")
-    print(f"上限: {max_messages} 件")
-    print(f"{'='*70}\n")
-
-    # 上限件数まで絞り込み
-    messages = messages[:max_messages]
-
-    # メッセージ一覧を表示
-    print(f"{'='*70}")
-    print(f"📋 送信予定メッセージ一覧")
-    print(f"{'='*70}\n")
-
-    for idx, msg in enumerate(messages, start=1):
-        print(f"--- [{idx}/{len(messages)}] {msg['name']} (スコア: {msg['total_score']}点) ---")
-        print(f"{msg['message']}")
-        print()
-
-    # ユーザーに確認
-    print(f"{'='*70}")
-    print(f"これらのメッセージを送信しますか？")
-    print(f"{'='*70}")
-    confirm = input("送信する場合は 'yes' と入力してください: ").strip().lower()
-
-    if confirm != 'yes':
-        print("\n❌ 送信をキャンセルしました\n")
-        return
-
-    # メッセージ送信
-    print(f"\n{'='*70}")
-    print(f"📨 メッセージ送信開始")
-    print(f"{'='*70}\n")
-
-    success_count = 0
-    error_count = 0
-
-    for idx, msg in enumerate(messages, start=1):
-        name = msg['name']
-        profile_url = msg['profile_url']
-        score = msg['total_score']
-        message = msg['message']
-
-        print(f"[{idx}/{len(messages)}] 📤 {name} (スコア: {score}点) へ送信中...")
-
-        result, error, details = send_message(driver, profile_url, name, message)
-
-        log_message(name, profile_url, result, message_log_file, error, details)
-
-        if result == "success":
-            success_count += 1
-            print(f"   ✅ 送信成功\n")
-        else:
-            error_count += 1
-            print(f"   ❌ 送信失敗: {error}\n")
-
-        # 遅延
-        if idx < len(messages):
-            delay = random.uniform(3, 6)
-            time.sleep(delay)
-
-    # サマリー
-    print(f"{'='*70}")
-    print(f"🎯 完了サマリー")
-    print(f"{'='*70}")
-    print(f"✅ 送信成功: {success_count} 件")
-    print(f"❌ 送信失敗: {error_count} 件")
-    print(f"📝 ログ: {message_log_file}")
-    print(f"{'='*70}\n")
+        return "error", f"予期しないエラー: {e}"
 
 # ==============================
 # メイン処理
@@ -486,26 +377,146 @@ def main(account_name, paths, max_messages):
     print(f"開始日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'='*70}\n")
 
-    # Step 1: 生成済みメッセージ読み込み
-    messages = load_generated_messages(paths['generated_messages_file'], paths['message_log_file'])
+    # profiles_master.csv 読み込み
+    print(f"{'='*70}")
+    print(f"📂 profiles_master.csv 読み込み")
+    print(f"{'='*70}\n")
 
-    if not messages:
+    if not os.path.exists(paths['profiles_master_file']):
+        print(f"❌ エラー: {paths['profiles_master_file']} が見つかりません")
+        print("⚠️  先に linkedin_prepare_messages.py を実行してください\n")
+        return
+
+    profiles_master = load_profiles_master(paths['profiles_master_file'])
+    print(f"✅ 既存レコード: {len(profiles_master)} 件\n")
+
+    # 送信対象抽出（message_generated=yes かつ message_sent_status≠success）
+    send_targets = []
+    for profile_url, profile in profiles_master.items():
+        if (profile.get('message_generated') == 'yes' and
+            profile.get('message_sent_status') != 'success'):
+            send_targets.append(profile)
+
+    if not send_targets:
         print("⚠️ 送信対象のメッセージがありません。処理を終了します。\n")
+        return
+
+    print(f"{'='*70}")
+    print(f"📋 送信対象")
+    print(f"{'='*70}")
+    print(f"対象者数: {len(send_targets)} 件")
+    print(f"上限: {max_messages} 件")
+    print(f"{'='*70}\n")
+
+    # 上限件数まで絞り込み
+    send_targets = send_targets[:max_messages]
+
+    # generated_messages.csv からメッセージを読み込み
+    messages_map = {}
+    if os.path.exists(paths['generated_messages_file']):
+        with open(paths['generated_messages_file'], "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                messages_map[row['profile_url']] = row
+
+    # メッセージ一覧を表示
+    print(f"{'='*70}")
+    print(f"📋 送信予定メッセージ一覧")
+    print(f"{'='*70}\n")
+
+    for idx, profile in enumerate(send_targets, start=1):
+        profile_url = profile['profile_url']
+        if profile_url in messages_map:
+            msg = messages_map[profile_url]
+            print(f"--- [{idx}/{len(send_targets)}] {msg['name']} (スコア: {msg['total_score']}点) ---")
+            print(f"{msg['message']}")
+            print()
+
+    # ユーザーに確認
+    print(f"{'='*70}")
+    print(f"これらのメッセージを送信しますか？")
+    print(f"{'='*70}")
+    confirm = input("送信する場合は 'yes' と入力してください: ").strip().lower()
+
+    if confirm != 'yes':
+        print("\n❌ 送信をキャンセルしました\n")
         return
 
     # ログイン
     driver = login(account_name, paths['cookie_file'])
 
     try:
-        # Step 2: メッセージ送信
-        send_all_messages(driver, messages, max_messages, paths['message_log_file'])
+        # メッセージ送信
+        print(f"\n{'='*70}")
+        print(f"📨 メッセージ送信開始")
+        print(f"{'='*70}\n")
+
+        success_count = 0
+        error_count = 0
+
+        for idx, profile in enumerate(send_targets, start=1):
+            name = profile['name']
+            profile_url = profile['profile_url']
+            score = profile.get('total_score', '0')
+
+            if profile_url not in messages_map:
+                print(f"[{idx}/{len(send_targets)}] ⚠️ {name} のメッセージが見つかりません\n")
+                continue
+
+            message = messages_map[profile_url]['message']
+
+            print(f"[{idx}/{len(send_targets)}] 📤 {name} (スコア: {score}点) へ送信中...")
+
+            result, error = send_message(driver, profile_url, name, message)
+
+            # profiles_master 更新
+            if result == "success":
+                update_profile_master(profiles_master, profile_url, {
+                    'message_sent_status': 'success',
+                    'message_sent_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'last_send_error': ''
+                })
+                success_count += 1
+                print(f"   ✅ 送信成功\n")
+            else:
+                update_profile_master(profiles_master, profile_url, {
+                    'message_sent_status': 'error',
+                    'message_sent_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'last_send_error': error
+                })
+                error_count += 1
+                print(f"   ❌ 送信失敗: {error}\n")
+
+            # 遅延
+            if idx < len(send_targets):
+                delay = random.uniform(3, 6)
+                time.sleep(delay)
+
+        # profiles_master.csv を保存
+        save_profiles_master(profiles_master, paths['profiles_master_file'])
+        print(f"💾 profiles_master.csv 更新完了\n")
+
+        # サマリー
+        print(f"{'='*70}")
+        print(f"🎯 完了サマリー")
+        print(f"{'='*70}")
+        print(f"✅ 送信成功: {success_count} 件")
+        print(f"❌ 送信失敗: {error_count} 件")
+        print(f"📝 ステータス: {paths['profiles_master_file']}")
+        print(f"{'='*70}\n")
 
     except KeyboardInterrupt:
         print("\n\n⚠️ ユーザーによって処理が中断されました\n")
+        # 途中経過を保存
+        save_profiles_master(profiles_master, paths['profiles_master_file'])
+        print(f"💾 profiles_master.csv を保存しました\n")
     except Exception as e:
         print(f"\n\n❌ エラーが発生しました: {e}\n")
         import traceback
         traceback.print_exc()
+        # 途中経過を保存
+        save_profiles_master(profiles_master, paths['profiles_master_file'])
+        print(f"💾 profiles_master.csv を保存しました\n")
     finally:
         print(f"\n{'='*70}")
         print(f"🏁 メッセージ送信完了")
