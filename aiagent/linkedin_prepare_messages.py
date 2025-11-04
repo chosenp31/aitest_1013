@@ -68,8 +68,9 @@ def get_account_paths(account_name):
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
-# メッセージテンプレート（絵文字なし）
-MESSAGE_TEMPLATE = """{name}さん
+# メッセージテンプレート（アカウント別）
+MESSAGE_TEMPLATES = {
+    "依田": """{name}さん
 
 いきなりすみません
 KPMGコンサルティングの依田と申します。
@@ -80,7 +81,20 @@ KPMGコンサルティングの依田と申します。
 ・フューチャーアーキテクト／KPMGでのプロジェクト経験
 ・転職時に検討したBIG4＋アクセンチュア／BCGの比較や選考情報
 
-もしご関心あれば、カジュアルにオンラインでお話できると嬉しいです！よろしくお願いします！"""
+もしご関心あれば、カジュアルにオンラインでお話できると嬉しいです！よろしくお願いします！""",
+
+    "桜井": """{name}さん
+
+桜井と申します。
+
+よろしくお願いいたします。""",
+
+    "田中": """{name}さん
+
+田中と申します。
+
+よろしくお願いいたします。"""
+}
 
 # スコアリングプロンプト
 SCORING_PROMPT = """
@@ -735,10 +749,17 @@ def filter_already_sent(targets, message_log_file):
 # ==============================
 # Step 6: メッセージ生成
 # ==============================
-def generate_message(name):
-    """メッセージを生成"""
-    base_message = MESSAGE_TEMPLATE.format(name=name)
+def generate_message(name, account_name):
+    """メッセージを生成（アカウント別）"""
+    # アカウント別のテンプレートを取得
+    template = MESSAGE_TEMPLATES.get(account_name, MESSAGE_TEMPLATES["依田"])
+    base_message = template.format(name=name)
 
+    # 桜井・田中の場合はシンプルなメッセージなのでテンプレートをそのまま使用
+    if account_name in ["桜井", "田中"]:
+        return base_message
+
+    # 依田の場合のみOpenAI APIでバリエーションを生成
     prompt = f"""
 以下のメッセージテンプレートを元に、自然で親しみやすいメッセージを生成してください。
 大幅な変更は不要です。語尾や表現を少しだけ変えてください。
@@ -773,7 +794,7 @@ def generate_message(name):
         print(f"   ⚠️ メッセージ生成エラー: {e}")
         return base_message
 
-def generate_all_messages(targets, generated_messages_file):
+def generate_all_messages(targets, generated_messages_file, account_name):
     """全メッセージを生成してCSV保存"""
 
     print(f"{'='*70}")
@@ -794,7 +815,7 @@ def generate_all_messages(targets, generated_messages_file):
             continue
 
         print(f"[{idx}/{len(targets)}] 💬 {name} (スコア: {score}点) のメッセージを生成中...")
-        message = generate_message(name)
+        message = generate_message(name, account_name)
         print(f"   ✅ 生成完了\n")
 
         messages_to_save.append({
@@ -805,7 +826,9 @@ def generate_all_messages(targets, generated_messages_file):
             'generated_at': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         })
 
-        time.sleep(1)
+        # 依田の場合のみAPI呼び出しがあるので待機
+        if account_name == "依田":
+            time.sleep(1)
 
     # CSV保存
     with open(generated_messages_file, "w", newline="", encoding="utf-8") as f:
@@ -886,7 +909,7 @@ def main(account_name, paths, start_date, use_scoring, min_score):
             return
 
         # Step 6: メッセージ生成・保存
-        generated_messages = generate_all_messages(send_targets, paths['generated_messages_file'])
+        generated_messages = generate_all_messages(send_targets, paths['generated_messages_file'], account_name)
 
         # 生成されたメッセージを一覧表示
         print(f"{'='*70}")
