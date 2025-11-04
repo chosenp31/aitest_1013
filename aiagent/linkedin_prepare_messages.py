@@ -144,9 +144,9 @@ LinkedIn Premium会員: {is_premium}
    - LinkedIn Premium会員（is_premium: "True"または"yes"の場合）
    - 学生（在学中）
    - IT業界と無関係（飲食、販売、製造、小売など）
-   - 現在以下の企業に勤務している者:
-     * フューチャー株式会社
-     * フューチャーアーキテクト株式会社
+   - これまでの職歴に以下の企業名が含まれる者（現在・過去問わず）:
+     * 「フューチャー」を含む企業（フューチャー株式会社、フューチャーアーキテクト株式会社など）
+     * 「KPMG」を含む企業（KPMGコンサルティング、KPMG税理士法人など）
 
 【出力形式】
 以下のJSON形式で出力してください。他の説明は一切不要です。
@@ -167,7 +167,7 @@ LinkedIn Premium会員: {is_premium}
 - 41歳以上は必ず除外（decision: "skip"、total_score: 0）
 - 経営層（社長、CEO、取締役等）は必ず除外（decision: "skip"、total_score: 0）
 - HR・人材関係（リクルーター、採用担当等）は必ず除外（decision: "skip"、total_score: 0）
-- フューチャー株式会社またはフューチャーアーキテクト株式会社に現在勤務している者は必ず除外（decision: "skip"、total_score: 0）
+- 職歴に「フューチャー」または「KPMG」を含む企業がある者は必ず除外（現在・過去問わず）（decision: "skip"、total_score: 0）
 - 合計スコアが60点以上の場合は "send"、それ未満は "skip"
 """
 
