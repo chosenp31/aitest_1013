@@ -826,7 +826,7 @@ def generate_all_messages(targets, generated_messages_file):
 # ==============================
 # メイン処理
 # ==============================
-def main(account_name, paths, start_date, min_score):
+def main(account_name, paths, start_date, use_scoring, min_score):
     """メイン処理"""
 
     print(f"\n{'='*70}")
@@ -854,12 +854,29 @@ def main(account_name, paths, start_date, min_score):
             print("⚠️ プロフィールが取得できませんでした。処理を終了します。\n")
             return
 
-        # Step 4: AIスコアリング
-        send_targets = score_all_candidates(profiles, min_score)
+        # Step 4: AIスコアリング（オプション）
+        if use_scoring:
+            send_targets = score_all_candidates(profiles, min_score)
 
-        if not send_targets:
-            print("⚠️ 送信対象が0件です。処理を終了します。\n")
-            return
+            if not send_targets:
+                print("⚠️ 送信対象が0件です。処理を終了します。\n")
+                return
+        else:
+            # スコアリングなし: 全員を送信対象とする
+            print(f"{'='*70}")
+            print(f"⚠️  スコアリングをスキップ（全員に送信）")
+            print(f"{'='*70}\n")
+
+            send_targets = []
+            for profile in profiles:
+                send_targets.append({
+                    'name': profile.get('name', '不明'),
+                    'profile_url': profile.get('profile_url', ''),
+                    'total_score': 0,  # スコアなし
+                    'decision': 'send'
+                })
+
+            print(f"✅ 送信対象: {len(send_targets)} 件（スコアリングなし）\n")
 
         # Step 5: 送信済みを除外
         send_targets = filter_already_sent(send_targets, paths['message_log_file'])
@@ -925,21 +942,30 @@ if __name__ == "__main__":
             print("⚠️ 日付形式が正しくありません。デフォルト値を使用します。")
             start_date = "2025-10-27"
 
-    # 最低スコア
-    print("\n【最低スコア】")
-    while True:
-        min_score_input = input("最低スコアを入力 (Enter=デフォルト「60」): ").strip()
-        if not min_score_input:
-            min_score = 60
-            break
-        try:
-            min_score = int(min_score_input)
-            if min_score >= 0:
+    # スコアリング条件
+    print("\n【スコアリング条件】")
+    use_scoring_input = input("スコアリング条件を使用しますか？ (yes=使用, no=全員に送信, Enter=デフォルト「yes」): ").strip().lower()
+    if use_scoring_input == 'no':
+        use_scoring = False
+        min_score = 0  # スコアリングしない場合は0
+        print("⚠️ スコアリングをスキップします（全員に送信）")
+    else:
+        use_scoring = True
+        # 最低スコア
+        print("\n【最低スコア】")
+        while True:
+            min_score_input = input("最低スコアを入力 (Enter=デフォルト「60」): ").strip()
+            if not min_score_input:
+                min_score = 60
                 break
-            else:
-                print("⚠️ 0以上の数値を入力してください")
-        except ValueError:
-            print("⚠️ 数値を入力してください")
+            try:
+                min_score = int(min_score_input)
+                if min_score >= 0:
+                    break
+                else:
+                    print("⚠️ 0以上の数値を入力してください")
+            except ValueError:
+                print("⚠️ 数値を入力してください")
 
     # 設定内容を確認
     print(f"\n{'='*70}")
@@ -947,7 +973,9 @@ if __name__ == "__main__":
     print(f"{'='*70}")
     print(f"アカウント: {account_name}")
     print(f"つながり取得開始日: {start_date}")
-    print(f"最低スコア: {min_score}点")
+    print(f"スコアリング条件: {'使用する' if use_scoring else '使用しない（全員に送信）'}")
+    if use_scoring:
+        print(f"最低スコア: {min_score}点")
     print(f"{'='*70}\n")
 
     confirm = input("この設定で実行しますか？ (yes/no): ").strip().lower()
@@ -955,4 +983,4 @@ if __name__ == "__main__":
         print("\n❌ 処理をキャンセルしました\n")
         exit(0)
 
-    main(account_name, paths, start_date, min_score)
+    main(account_name, paths, start_date, use_scoring, min_score)
