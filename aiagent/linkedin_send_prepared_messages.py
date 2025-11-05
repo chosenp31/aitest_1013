@@ -27,6 +27,14 @@ load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# ==============================
+# 人間らしい挙動のためのヘルパー関数
+# ==============================
+def human_sleep(min_sec, max_sec):
+    """人間らしいランダムな待機時間"""
+    wait_time = random.uniform(min_sec, max_sec)
+    time.sleep(wait_time)
+
 # アカウント名の定義
 AVAILABLE_ACCOUNTS = ["依田", "桜井", "田中"]
 
@@ -124,7 +132,7 @@ def login(account_name, cookie_file):
     if os.path.exists(cookie_file):
         print(f"🔑 保存されたCookieを使用して自動ログイン中（アカウント: {account_name}）...")
         driver.get("https://www.linkedin.com")
-        time.sleep(2)
+        human_sleep(2, 4)
 
         try:
             with open(cookie_file, "rb") as f:
@@ -136,7 +144,7 @@ def login(account_name, cookie_file):
                     pass
 
             driver.get("https://www.linkedin.com/feed")
-            time.sleep(5)
+            human_sleep(4, 7)
 
             current_url = driver.current_url
             if ("feed" in current_url or "home" in current_url) and "login" not in current_url:
@@ -180,9 +188,9 @@ def send_message(driver, profile_url, name, message):
     try:
         # プロフィールページへ移動
         driver.get(profile_url)
-        time.sleep(3)
+        human_sleep(3, 6)
         driver.execute_script("window.scrollTo(0, 400);")
-        time.sleep(1)
+        human_sleep(1, 2)
 
         # メッセージボタンを探す
         message_btn = None
@@ -213,21 +221,21 @@ def send_message(driver, profile_url, name, message):
 
         if not message_btn.is_displayed():
             driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", message_btn)
-            time.sleep(1)
+            human_sleep(0.5, 1.5)
 
         try:
             message_btn.click()
         except Exception:
             driver.execute_script("arguments[0].click();", message_btn)
 
-        time.sleep(3)
+        human_sleep(2, 4)
 
         # ポップアップ待機
         try:
             WebDriverWait(driver, 10).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "[role='dialog']"))
             )
-            time.sleep(1)
+            human_sleep(1, 2)
         except TimeoutException:
             return "error", "ポップアップ表示タイムアウト"
 
@@ -253,13 +261,13 @@ def send_message(driver, profile_url, name, message):
 
         # メッセージを入力
         driver.execute_script("arguments[0].focus();", message_box)
-        time.sleep(0.5)
+        human_sleep(0.5, 1)
         message_box.click()
-        time.sleep(0.5)
+        human_sleep(0.5, 1)
 
         try:
             message_box.send_keys(message)
-            time.sleep(0.5)
+            human_sleep(1, 2)
         except Exception as e:
             return "error", f"メッセージ入力エラー: {e}"
 
@@ -302,7 +310,7 @@ def send_message(driver, profile_url, name, message):
         except Exception:
             driver.execute_script("arguments[0].click();", send_btn)
 
-        time.sleep(2)
+        human_sleep(2, 4)
 
         if button_enabled:
             # ポップアップを確実に閉じる（複数の方法を試す）
@@ -446,6 +454,12 @@ def main(account_name, paths, max_messages):
     driver = login(account_name, paths['cookie_file'])
 
     try:
+        # 1日の送信上限チェック
+        DAILY_LIMIT = 30
+        if len(send_targets) > DAILY_LIMIT:
+            print(f"\n⚠️ 送信対象が{len(send_targets)}件ですが、1日の上限{DAILY_LIMIT}件に制限します\n")
+            send_targets = send_targets[:DAILY_LIMIT]
+
         # メッセージ送信
         print(f"\n{'='*70}")
         print(f"📨 メッセージ送信開始")
@@ -453,6 +467,7 @@ def main(account_name, paths, max_messages):
 
         success_count = 0
         error_count = 0
+        batch_size = random.randint(5, 7)  # 最初のバッチサイズを決定
 
         for idx, profile in enumerate(send_targets, start=1):
             name = profile['name']
@@ -486,11 +501,21 @@ def main(account_name, paths, max_messages):
                 })
                 error_count += 1
                 print(f"   ❌ 送信失敗: {error}\n")
+                # エラー時は長めの休憩
+                if idx < len(send_targets):
+                    print(f"   ⏸️  エラー後の休憩中...\n")
+                    human_sleep(30, 60)
+                    continue
 
-            # 遅延
-            if idx < len(send_targets):
-                delay = random.uniform(3, 6)
-                time.sleep(delay)
+            # バッチ休憩（5〜7人ごとに1〜3分休憩）
+            if idx % batch_size == 0 and idx < len(send_targets):
+                rest_time = random.randint(60, 180)
+                print(f"   ☕ 休憩中... ({rest_time}秒)\n")
+                time.sleep(rest_time)
+                batch_size = random.randint(5, 7)  # 次のバッチサイズを決定
+            # 通常の遅延（人間らしい間隔）
+            elif idx < len(send_targets):
+                human_sleep(10, 20)
 
         # profiles_master.csv を保存
         save_profiles_master(profiles_master, paths['profiles_master_file'])

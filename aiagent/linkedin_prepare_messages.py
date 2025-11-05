@@ -25,6 +25,14 @@ load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# ==============================
+# 人間らしい挙動のためのヘルパー関数
+# ==============================
+def human_sleep(min_sec, max_sec):
+    """人間らしいランダムな待機時間"""
+    wait_time = random.uniform(min_sec, max_sec)
+    time.sleep(wait_time)
+
 # アカウント名の定義
 AVAILABLE_ACCOUNTS = ["依田", "桜井", "田中"]
 
@@ -255,7 +263,7 @@ def login(account_name, cookie_file):
     if os.path.exists(cookie_file):
         print(f"🔑 保存されたCookieを使用して自動ログイン中（アカウント: {account_name}）...")
         driver.get("https://www.linkedin.com")
-        time.sleep(2)
+        human_sleep(2, 4)
 
         try:
             with open(cookie_file, "rb") as f:
@@ -267,7 +275,7 @@ def login(account_name, cookie_file):
                     pass
 
             driver.get("https://www.linkedin.com/feed")
-            time.sleep(5)
+            human_sleep(4, 7)
 
             current_url = driver.current_url
             if ("feed" in current_url or "home" in current_url) and "login" not in current_url:
@@ -318,7 +326,7 @@ def get_connections(driver, start_date):
     # つながりページへ移動
     connections_url = "https://www.linkedin.com/mynetwork/invite-connect/connections/"
     driver.get(connections_url)
-    time.sleep(5)
+    human_sleep(4, 7)
 
     # スクロールコンテナを取得
     try:
@@ -331,11 +339,12 @@ def get_connections(driver, start_date):
     # スクロールして全てのつながりを読み込む
     print("📜 スクロールしてつながりを読み込み中...")
     for i in range(30):
+        scroll_amount = random.randint(300, 800)
         if container:
-            driver.execute_script("arguments[0].scrollBy(0, 500);", container)
+            driver.execute_script(f"arguments[0].scrollBy(0, {scroll_amount});", container)
         else:
-            driver.execute_script("window.scrollBy(0, 500);")
-        time.sleep(3)
+            driver.execute_script(f"window.scrollBy(0, {scroll_amount});")
+        human_sleep(2, 6)
 
     print("✅ スクロール完了\n")
 
@@ -420,7 +429,7 @@ def get_profile_details(driver, profile_url, name):
     """プロフィール詳細を取得"""
     try:
         driver.get(profile_url)
-        time.sleep(4)
+        human_sleep(5, 12)
 
         script = """
         const result = {
@@ -739,9 +748,9 @@ def main(account_name, paths, start_date, use_scoring, min_score):
                     'profile_fetched_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 })
 
-                # 遅延
+                # 遅延（人間らしい間隔）
                 if idx < len(profiles_to_fetch):
-                    time.sleep(random.uniform(3, 6))
+                    human_sleep(4, 8)
 
             save_profiles_master(profiles_master, paths['profiles_master_file'])
             print(f"💾 profiles_master.csv 更新完了\n")
@@ -805,7 +814,7 @@ def main(account_name, paths, start_date, use_scoring, min_score):
                         'scoring_decision': decision
                     })
 
-                    time.sleep(1)
+                    human_sleep(1, 2)
 
                 save_profiles_master(profiles_master, paths['profiles_master_file'])
                 print(f"💾 profiles_master.csv 更新完了\n")
