@@ -1,0 +1,318 @@
+# aiagent/profiles_manager.py
+# LinkedIn メッセージ送信管理画面（Streamlit）
+
+import os
+import csv
+import streamlit as st
+import pandas as pd
+from datetime import datetime
+
+# ==============================
+# 設定
+# ==============================
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+AVAILABLE_ACCOUNTS = ["依田", "桜井", "田中"]
+
+def get_account_paths(account_name):
+    """アカウント毎のディレクトリとファイルパスを取得"""
+    account_dir = os.path.join(BASE_DIR, "data", account_name)
+    os.makedirs(account_dir, exist_ok=True)
+
+    return {
+        'account_dir': account_dir,
+        'profiles_master_file': os.path.join(account_dir, "profiles_master.csv"),
+        'generated_messages_file': os.path.join(account_dir, "generated_messages.csv")
+    }
+
+# ==============================
+# データ読み込み・保存
+# ==============================
+def load_profiles_master(profiles_master_file):
+    """profiles_master.csv を読み込む"""
+    if not os.path.exists(profiles_master_file):
+        return pd.DataFrame(columns=[
+            "profile_url", "name", "connected_date",
+            "profile_fetched", "profile_fetched_at",
+            "total_score", "scoring_decision",
+            "message_generated", "message_generated_at",
+            "message_sent_status", "message_sent_at", "last_send_error"
+        ])
+
+    df = pd.read_csv(profiles_master_file)
+    return df
+
+def save_profiles_master(df, profiles_master_file):
+    """profiles_master.csv を保存"""
+    df.to_csv(profiles_master_file, index=False, encoding='utf-8')
+
+def load_messages(generated_messages_file):
+    """generated_messages.csv を読み込む"""
+    if not os.path.exists(generated_messages_file):
+        return {}
+
+    messages_map = {}
+    with open(generated_messages_file, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            messages_map[row['profile_url']] = row['message']
+
+    return messages_map
+
+# ==============================
+# 統計情報
+# ==============================
+def get_statistics(df):
+    """統計情報を取得"""
+    total = len(df)
+    success = len(df[df['message_sent_status'] == 'success'])
+    pending = len(df[df['message_sent_status'] == 'pending'])
+    error = len(df[df['message_sent_status'] == 'error'])
+
+    return {
+        'total': total,
+        'success': success,
+        'pending': pending,
+        'error': error
+    }
+
+# ==============================
+# Streamlit UI
+# ==============================
+def main():
+    st.set_page_config(page_title="LinkedIn メッセージ送信管理", layout="wide")
+
+    st.title("📊 LinkedIn メッセージ送信管理画面")
+    st.markdown("---")
+
+    # アカウント選択
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        account_name = st.selectbox("🔹 アカウント選択", AVAILABLE_ACCOUNTS)
+
+    paths = get_account_paths(account_name)
+
+    # データ読み込み
+    df = load_profiles_master(paths['profiles_master_file'])
+    messages_map = load_messages(paths['generated_messages_file'])
+
+    if df.empty:
+        st.warning(f"⚠️ {account_name} アカウントのデータがありません")
+        return
+
+    # 統計情報
+    stats = get_statistics(df)
+
+    st.markdown("### 📈 統計情報")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("全件", stats['total'])
+    with col2:
+        st.metric("✅ 送信成功", stats['success'])
+    with col3:
+        st.metric("⏳ 送信待ち", stats['pending'])
+    with col4:
+        st.metric("❌ エラー", stats['error'])
+
+    st.markdown("---")
+
+    # フィルター・検索
+    st.markdown("### 🔍 フィルター・検索")
+
+    col1, col2, col3 = st.columns([2, 2, 2])
+
+    with col1:
+        status_filter = st.selectbox(
+            "送信ステータス",
+            ["全て", "送信成功 (success)", "送信待ち (pending)", "エラー (error)"]
+        )
+
+    with col2:
+        decision_filter = st.selectbox(
+            "判定結果",
+            ["全て", "送信対象 (send)", "スキップ (skip)", "未判定"]
+        )
+
+    with col3:
+        name_search = st.text_input("名前検索", "")
+
+    # フィルタリング処理
+    filtered_df = df.copy()
+
+    if status_filter == "送信成功 (success)":
+        filtered_df = filtered_df[filtered_df['message_sent_status'] == 'success']
+    elif status_filter == "送信待ち (pending)":
+        filtered_df = filtered_df[filtered_df['message_sent_status'] == 'pending']
+    elif status_filter == "エラー (error)":
+        filtered_df = filtered_df[filtered_df['message_sent_status'] == 'error']
+
+    if decision_filter == "送信対象 (send)":
+        filtered_df = filtered_df[filtered_df['scoring_decision'] == 'send']
+    elif decision_filter == "スキップ (skip)":
+        filtered_df = filtered_df[filtered_df['scoring_decision'] == 'skip']
+    elif decision_filter == "未判定":
+        filtered_df = filtered_df[filtered_df['scoring_decision'].isna() | (filtered_df['scoring_decision'] == '')]
+
+    if name_search:
+        filtered_df = filtered_df[filtered_df['name'].str.contains(name_search, na=False)]
+
+    st.markdown(f"**検索結果: {len(filtered_df)} 件**")
+
+    st.markdown("---")
+
+    # 一覧表示
+    st.markdown("### 📋 プロフィール一覧")
+
+    if filtered_df.empty:
+        st.info("該当するデータがありません")
+        return
+
+    # 表示用のデータフレーム作成
+    display_df = filtered_df.copy()
+
+    # ステータスアイコン追加
+    status_icons = {
+        'success': '✅',
+        'pending': '⏳',
+        'error': '❌'
+    }
+    display_df['アイコン'] = display_df['message_sent_status'].map(status_icons)
+
+    # 表示列を選択
+    display_columns = ['アイコン', 'name', 'total_score', 'message_sent_status', 'message_sent_at', 'last_send_error']
+    display_df_filtered = display_df[display_columns].copy()
+    display_df_filtered.columns = ['', '名前', 'スコア', '送信ステータス', '送信日時', 'エラー内容']
+
+    # データエディタで表示
+    st.dataframe(
+        display_df_filtered,
+        use_container_width=True,
+        hide_index=True,
+        height=400
+    )
+
+    st.markdown("---")
+
+    # 詳細表示・編集
+    st.markdown("### 🔧 詳細表示・ステータス変更")
+
+    # 行選択（名前で選択）
+    selected_name = st.selectbox(
+        "編集する人を選択",
+        ["（選択してください）"] + filtered_df['name'].tolist()
+    )
+
+    if selected_name != "（選択してください）":
+        selected_row = filtered_df[filtered_df['name'] == selected_name].iloc[0]
+        profile_url = selected_row['profile_url']
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("#### 📄 基本情報")
+            st.text(f"名前: {selected_row['name']}")
+            st.text(f"つながり日: {selected_row['connected_date']}")
+            st.text(f"スコア: {selected_row['total_score']}点")
+            st.text(f"判定: {selected_row['scoring_decision']}")
+            st.text(f"プロフィールURL: {profile_url}")
+
+        with col2:
+            st.markdown("#### 📨 送信情報")
+            st.text(f"送信ステータス: {selected_row['message_sent_status']}")
+            st.text(f"送信日時: {selected_row['message_sent_at']}")
+            if selected_row['last_send_error']:
+                st.error(f"エラー内容: {selected_row['last_send_error']}")
+
+        # メッセージ表示
+        if profile_url in messages_map:
+            st.markdown("#### 💬 生成されたメッセージ")
+            st.text_area("", messages_map[profile_url], height=200, disabled=True)
+
+        st.markdown("---")
+
+        # ステータス変更
+        st.markdown("#### ✏️ ステータス変更")
+
+        col1, col2 = st.columns([3, 1])
+
+        with col1:
+            new_status = st.selectbox(
+                "新しい送信ステータス",
+                ["pending", "success", "error"],
+                index=["pending", "success", "error"].index(selected_row['message_sent_status'])
+            )
+
+        with col2:
+            st.write("")  # スペース
+            st.write("")  # スペース
+            if st.button("💾 保存", type="primary"):
+                # ステータス更新
+                df.loc[df['profile_url'] == profile_url, 'message_sent_status'] = new_status
+
+                # タイムスタンプ更新
+                if new_status == 'success':
+                    df.loc[df['profile_url'] == profile_url, 'message_sent_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    df.loc[df['profile_url'] == profile_url, 'last_send_error'] = ''
+                elif new_status == 'pending':
+                    df.loc[df['profile_url'] == profile_url, 'message_sent_at'] = ''
+                    df.loc[df['profile_url'] == profile_url, 'last_send_error'] = ''
+
+                # 保存
+                save_profiles_master(df, paths['profiles_master_file'])
+                st.success("✅ 保存しました！")
+                st.rerun()
+
+    st.markdown("---")
+
+    # 一括操作
+    st.markdown("### 🛠️ 一括操作")
+    st.warning("⚠️ 一括操作は慎重に行ってください")
+
+    col1, col2, col3 = st.columns([2, 2, 1])
+
+    with col1:
+        bulk_filter = st.selectbox(
+            "対象を選択",
+            ["全ての送信待ち (pending)", "全てのエラー (error)", "全ての送信成功 (success)"]
+        )
+
+    with col2:
+        bulk_new_status = st.selectbox(
+            "変更後のステータス",
+            ["pending", "success", "error"]
+        )
+
+    with col3:
+        st.write("")  # スペース
+        st.write("")  # スペース
+        if st.button("🔄 一括変更", type="secondary"):
+            if bulk_filter == "全ての送信待ち (pending)":
+                target_status = 'pending'
+            elif bulk_filter == "全てのエラー (error)":
+                target_status = 'error'
+            elif bulk_filter == "全ての送信成功 (success)":
+                target_status = 'success'
+
+            # 対象行を更新
+            mask = df['message_sent_status'] == target_status
+            count = mask.sum()
+
+            if count > 0:
+                df.loc[mask, 'message_sent_status'] = bulk_new_status
+
+                # タイムスタンプ更新
+                if bulk_new_status == 'success':
+                    df.loc[mask, 'message_sent_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    df.loc[mask, 'last_send_error'] = ''
+                elif bulk_new_status == 'pending':
+                    df.loc[mask, 'message_sent_at'] = ''
+                    df.loc[mask, 'last_send_error'] = ''
+
+                # 保存
+                save_profiles_master(df, paths['profiles_master_file'])
+                st.success(f"✅ {count}件のステータスを {bulk_new_status} に変更しました！")
+                st.rerun()
+            else:
+                st.info("対象データがありません")
+
+if __name__ == "__main__":
+    main()
