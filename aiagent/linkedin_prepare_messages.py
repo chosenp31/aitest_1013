@@ -1001,8 +1001,8 @@ if __name__ == "__main__":
         print(f"最低スコア: {min_score}点")
     print(f"{'='*70}\n")
 
-    confirm = input("この設定で実行しますか？ (yes/no): ").strip().lower()
-    if confirm != 'yes':
+    confirm = input("この設定で実行しますか？ (Enter=実行 / no=キャンセル): ").strip().lower()
+    if confirm == 'no':
         print("\n❌ 処理をキャンセルしました\n")
         exit(0)
 
