@@ -259,14 +259,19 @@ def send_message(driver, profile_url, name, message):
         if not message_box:
             return "error", "メッセージ入力欄が見つかりません"
 
-        # メッセージを入力
+        # メッセージを入力（JavaScriptで設定して絵文字に対応）
         driver.execute_script("arguments[0].focus();", message_box)
         human_sleep(0.5, 1)
         message_box.click()
         human_sleep(0.5, 1)
 
         try:
-            message_box.send_keys(message)
+            # JavaScriptで直接テキストを設定（絵文字対応）
+            driver.execute_script("""
+                arguments[0].innerText = arguments[1];
+                arguments[0].dispatchEvent(new Event('input', { bubbles: true }));
+                arguments[0].dispatchEvent(new Event('change', { bubbles: true }));
+            """, message_box, message)
             human_sleep(1, 2)
         except Exception as e:
             return "error", f"メッセージ入力エラー: {e}"
