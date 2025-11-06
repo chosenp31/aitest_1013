@@ -436,7 +436,7 @@ def get_profile_details(driver, profile_url, name):
 # ==============================
 # メイン処理
 # ==============================
-def main(account_name, paths, start_date):
+def main(account_name, paths, start_date, max_profiles):
     """メイン処理"""
 
     print(f"\n{'='*70}")
@@ -483,6 +483,11 @@ def main(account_name, paths, start_date):
 
         # Step 2: プロフィール詳細取得（profile_fetched=no のみ）
         profiles_to_fetch = [p for p in profiles_master.values() if p.get('profile_fetched') == 'no']
+
+        # 取得数制限
+        if max_profiles > 0 and len(profiles_to_fetch) > max_profiles:
+            print(f"⚠️ 対象者が{len(profiles_to_fetch)}件ですが、上限{max_profiles}件に制限します\n")
+            profiles_to_fetch = profiles_to_fetch[:max_profiles]
 
         if profiles_to_fetch:
             print(f"{'='*70}")
@@ -572,12 +577,29 @@ if __name__ == "__main__":
             print("⚠️ 日付形式が正しくありません。デフォルト値を使用します。")
             start_date = "2025-10-27"
 
+    # 最大取得数
+    print("\n【最大取得数】")
+    while True:
+        max_profiles_input = input("プロフィール情報の最大取得数を入力 (Enter=デフォルト「全件」, 0=全件): ").strip()
+        if not max_profiles_input:
+            max_profiles = 0  # 0は全件
+            break
+        try:
+            max_profiles = int(max_profiles_input)
+            if max_profiles >= 0:
+                break
+            else:
+                print("⚠️ 0以上の数値を入力してください")
+        except ValueError:
+            print("⚠️ 数値を入力してください")
+
     # 設定内容を確認
     print(f"\n{'='*70}")
     print(f"📋 設定内容")
     print(f"{'='*70}")
     print(f"アカウント: {account_name}")
     print(f"つながり取得開始日: {start_date}")
+    print(f"最大取得数: {'全件' if max_profiles == 0 else f'{max_profiles}件'}")
     print(f"{'='*70}\n")
 
     confirm = input("この設定で実行しますか？ (Enter=実行 / no=キャンセル): ").strip().lower()
@@ -585,4 +607,4 @@ if __name__ == "__main__":
         print("\n❌ 処理をキャンセルしました\n")
         exit(0)
 
-    main(account_name, paths, start_date)
+    main(account_name, paths, start_date, max_profiles)
