@@ -266,11 +266,25 @@ def get_connections(driver, start_date):
         connections = driver.execute_script(script)
         print(f"✅ 検出されたつながり: {len(connections)}件\n")
 
+        # デバッグ: 最初の5件の日付を表示
+        print("🔍 デバッグ: 最初の5件の日付情報")
+        for i, conn in enumerate(connections[:5]):
+            print(f"  {i+1}. {conn['name']}: connected_date='{conn['connected_date']}'")
+        print()
+
         # 日付フィルタリング
         filtered = []
+        date_missing_count = 0
         for conn in connections:
-            if conn['connected_date'] >= start_date:
+            # 日付が空の場合は、すべて対象に含める
+            if not conn['connected_date']:
                 filtered.append(conn)
+                date_missing_count += 1
+            elif conn['connected_date'] >= start_date:
+                filtered.append(conn)
+
+        if date_missing_count > 0:
+            print(f"⚠️ 日付情報なし: {date_missing_count}件（全て対象に含めました）")
 
         print(f"✅ {start_date}以降のつながり: {len(filtered)}件\n")
         return filtered
