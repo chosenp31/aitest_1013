@@ -318,7 +318,10 @@ def main(account_name, paths, use_scoring, min_score):
                         profile_details_map[row['profile_url']] = row
 
             for profile_url, profile in profiles_master.items():
-                if profile.get('profile_fetched') == 'yes' and not profile.get('scoring_decision'):
+                # 送信済みの人はスコアリング不要
+                if (profile.get('profile_fetched') == 'yes' and
+                    not profile.get('scoring_decision') and
+                    profile.get('message_sent_status') != 'success'):
                     if profile_url in profile_details_map:
                         detail = profile_details_map[profile_url]
                         profiles_to_score.append({
