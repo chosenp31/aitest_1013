@@ -355,6 +355,10 @@ def main(account_name, paths, use_scoring, min_score):
                     total_score = scored.get('total_score', 0)
                     reason = scored.get('reason', '')
                     exclusion_reason = scored.get('exclusion_reason', '')
+                    age_score = scored.get('age_score', 0)
+                    it_experience_score = scored.get('it_experience_score', 0)
+                    position_score = scored.get('position_score', 0)
+                    estimated_age = scored.get('estimated_age', None)
 
                     if decision == "send":
                         print(f"   ✅ 送信対象: {total_score}点")
@@ -362,6 +366,11 @@ def main(account_name, paths, use_scoring, min_score):
                         print(f"   ⚪ スキップ: {total_score}点")
                         if exclusion_reason:
                             print(f"   除外理由: {exclusion_reason}")
+
+                    # スコア内訳を表示
+                    print(f"   📊 内訳: 年齢{age_score}点 + IT経験{it_experience_score}点 + ポジション{position_score}点 = {total_score}点")
+                    if estimated_age:
+                        print(f"   👤 推定年齢: {estimated_age}歳")
                     print(f"   理由: {reason}\n")
 
                     # profiles_master 更新（skipの場合はスコアを"-"にする）
