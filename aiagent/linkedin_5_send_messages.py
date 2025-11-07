@@ -266,13 +266,29 @@ def send_message(driver, profile_url, name, message):
         human_sleep(0.5, 1)
 
         try:
-            # JavaScriptで直接テキストを設定（絵文字対応）
+            # JavaScriptで直接テキストを設定（絵文字対応）+ Reactイベントをトリガー
             driver.execute_script("""
-                arguments[0].innerText = arguments[1];
-                arguments[0].dispatchEvent(new Event('input', { bubbles: true }));
-                arguments[0].dispatchEvent(new Event('change', { bubbles: true }));
+                const element = arguments[0];
+                const text = arguments[1];
+
+                // テキストを設定
+                element.innerText = text;
+
+                // Reactが検知できるように複数のイベントをトリガー
+                element.dispatchEvent(new Event('focus', { bubbles: true }));
+                element.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true }));
+                element.dispatchEvent(new Event('input', { bubbles: true }));
+                element.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, cancelable: true }));
+                element.dispatchEvent(new Event('change', { bubbles: true }));
+
+                // さらに、最後にスペースを追加して削除することでReactの変更検知を確実にする
+                const originalText = element.innerText;
+                element.innerText = originalText + ' ';
+                element.dispatchEvent(new Event('input', { bubbles: true }));
+                element.innerText = originalText;
+                element.dispatchEvent(new Event('input', { bubbles: true }));
             """, message_box, message)
-            human_sleep(1, 2)
+            human_sleep(2, 3)
         except Exception as e:
             return "error", f"メッセージ入力エラー: {e}"
 
