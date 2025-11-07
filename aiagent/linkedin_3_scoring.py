@@ -84,10 +84,10 @@ LinkedIn Premium会員: {is_premium}
 2. **人材関係者の除外（最優先）**
    - ヘッドラインまたは職歴に以下のキーワードが含まれる場合 → 即座に除外
    - キーワード例：
-     * 「採用」「リクルーター」「リクルート」「人材紹介」「人材派遣」
-     * 「ヘッドハンター」「キャリアアドバイザー」「人事コンサルタント」
-     * 「新卒採用」「中途採用」「エンジニア採用」「採用担当」「採用立ち上げ」
-     * 「HR」「Human Resources」「Talent Acquisition」「TA」
+     * 採用系: 「採用」「リクルーター」「リクルート」「新卒採用」「中途採用」「エンジニア採用」「採用担当」「採用立ち上げ」
+     * 転職・人材系: 「転職」「人材紹介」「人材派遣」「人材コンサルタント」「人材サービス」
+     * 人事系: 「人事」「HR」「Human Resources」「人事コンサルタント」
+     * その他: 「ヘッドハンター」「ヘッドハンティング」「キャリアアドバイザー」「キャリアコンサルタント」「Talent Acquisition」「TA」「スカウト」「RPO」「就活」「就職支援」
    - decision: "skip", total_score: 0, exclusion_reason: "人材関係者のため"
 
 3. **経営層の除外**
@@ -283,6 +283,93 @@ def score_candidate(candidate):
             "exclusion_reason": "APIエラー"
         }
 
+def validate_and_enforce_exclusion(candidate, scoring_result):
+    """
+    Python側でスコアリング結果を検証し、除外条件に該当する場合は強制的に除外する
+
+    Args:
+        candidate: 候補者情報
+        scoring_result: OpenAI APIからのスコアリング結果
+
+    Returns:
+        検証後のスコアリング結果（必要に応じて上書き）
+    """
+    name = candidate.get("name", "不明")
+    headline = candidate.get("headline", "").lower()
+    experiences = candidate.get("experiences", "").lower()
+    is_premium = candidate.get("is_premium", False)
+    is_premium_bool = str(is_premium).lower() in ['true', 'yes', '1']
+
+    # 1. Premium会員チェック
+    if is_premium_bool:
+        return {
+            "estimated_age": None,
+            "age_reasoning": "",
+            "age_score": 0,
+            "it_experience_score": 0,
+            "position_score": 0,
+            "total_score": 0,
+            "decision": "skip",
+            "reason": "LinkedIn Premium会員のため除外",
+            "exclusion_reason": "Premium会員のため"
+        }
+
+    # 2. 人材関係キーワードチェック
+    hr_keywords = [
+        # 採用系
+        '採用', 'リクルーター', 'リクルート', '新卒採用', '中途採用', 'エンジニア採用', '採用担当', '採用立ち上げ',
+        # 転職・人材系
+        '転職', '人材紹介', '人材派遣', '人材コンサルタント', '人材サービス',
+        # 人事系
+        '人事', 'hr', 'human resources', '人事コンサルタント',
+        # その他
+        'ヘッドハンター', 'ヘッドハンティング', 'キャリアアドバイザー', 'キャリアコンサルタント',
+        'talent acquisition', 'スカウト', 'rpo', '就活', '就職支援'
+    ]
+
+    # 単語境界を考慮すべき短いキーワード（誤検出を防ぐため）
+    short_keywords_with_boundary = [
+        'ta',  # "data"などに誤検出しないよう単語境界を考慮
+    ]
+
+    text_to_check = headline + " " + experiences
+
+    # 通常のキーワードチェック
+    for keyword in hr_keywords:
+        if keyword in text_to_check:
+            return {
+                "estimated_age": scoring_result.get("estimated_age"),
+                "age_reasoning": scoring_result.get("age_reasoning", ""),
+                "age_score": 0,
+                "it_experience_score": 0,
+                "position_score": 0,
+                "total_score": 0,
+                "decision": "skip",
+                "reason": f"人材関係キーワード「{keyword}」が検出されたため除外",
+                "exclusion_reason": "人材関係者のため"
+            }
+
+    # 単語境界を考慮したキーワードチェック（正規表現使用）
+    import re
+    for keyword in short_keywords_with_boundary:
+        # \b は単語境界を表す
+        pattern = r'\b' + re.escape(keyword) + r'\b'
+        if re.search(pattern, text_to_check, re.IGNORECASE):
+            return {
+                "estimated_age": scoring_result.get("estimated_age"),
+                "age_reasoning": scoring_result.get("age_reasoning", ""),
+                "age_score": 0,
+                "it_experience_score": 0,
+                "position_score": 0,
+                "total_score": 0,
+                "decision": "skip",
+                "reason": f"人材関係キーワード「{keyword}」が検出されたため除外",
+                "exclusion_reason": "人材関係者のため"
+            }
+
+    # 除外条件に該当しない場合は、元の結果をそのまま返す
+    return scoring_result
+
 # ==============================
 # メイン処理
 # ==============================
@@ -349,7 +436,11 @@ def main(account_name, paths, use_scoring, min_score):
 
                     print(f"[{idx}/{len(profiles_to_score)}] 📊 {name} をスコアリング中...")
 
+                    # OpenAI APIでスコアリング
                     scored = score_candidate(candidate)
+
+                    # Python側で除外条件を強制チェック（二重チェック）
+                    scored = validate_and_enforce_exclusion(candidate, scored)
 
                     decision = scored.get('decision', 'skip')
                     total_score = scored.get('total_score', 0)
