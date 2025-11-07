@@ -88,7 +88,9 @@ def reset_scoring(account_name, paths):
     print("   - scoring_decision を空に変更")
     print("   - exclusion_reason を空に変更")
     print()
-    print("⚠️ 注意: メッセージ生成・送信情報は保持されます")
+    print("⚠️ 注意:")
+    print("  - メッセージ生成・送信情報は保持されます")
+    print("  - 送信済み（message_sent_status = success）の人はリセットされません")
     print()
 
     confirm = input("この内容でリセットしますか？ (Enter=実行 / no=キャンセル): ").strip().lower()
@@ -99,13 +101,17 @@ def reset_scoring(account_name, paths):
 
     # profiles_master.csv を更新
     reset_count = 0
+    skip_count = 0
 
     for profile_url, profile in profiles_master.items():
-        if profile.get('scoring_decision'):
+        # スコアリング済みで、かつ送信済みでない人のみリセット
+        if profile.get('scoring_decision') and profile.get('message_sent_status') != 'success':
             profile['total_score'] = ''
             profile['scoring_decision'] = ''
             profile['exclusion_reason'] = ''
             reset_count += 1
+        elif profile.get('scoring_decision') and profile.get('message_sent_status') == 'success':
+            skip_count += 1
 
     # profiles_master.csv を保存
     fieldnames = [
@@ -123,7 +129,10 @@ def reset_scoring(account_name, paths):
         sorted_profiles = sorted(profiles_master.values(), key=lambda x: x.get('profile_url', ''))
         writer.writerows(sorted_profiles)
 
-    print(f"✅ profiles_master.csv を更新しました（{reset_count}件をリセット）")
+    print(f"✅ profiles_master.csv を更新しました")
+    print(f"   リセット: {reset_count}件")
+    if skip_count > 0:
+        print(f"   スキップ（送信済み）: {skip_count}件")
 
     print()
     print(f"{'='*70}")
