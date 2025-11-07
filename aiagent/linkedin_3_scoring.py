@@ -121,11 +121,11 @@ LinkedIn Premium会員: {is_premium}
    - 22-40歳: 30点（一律）
    - 年齢不明の場合: 年齢スコア0点として扱う（他の項目でスコアリング）
 
-2. IT業界経験評価（0-35点）
+2. IT業界経験評価（0-50点）
    - キーワード: SIer, ITコンサルタント, エンジニア, DXエンジニア, システム開発, クラウド, AI, データサイエンス
-   - 現在のIT業界経験が3年以上: 35点
-   - 現在のIT業界経験が1-3年: 25点
-   - 過去にIT業界経験あり: 15点
+   - 現在のIT業界経験が3年以上: 50点
+   - 現在のIT業界経験が1-3年: 30点
+   - 過去にIT業界経験あり: 30点
    - IT業界経験なし: 0点
 
 3. ポジション評価（0-20点）
@@ -140,7 +140,7 @@ LinkedIn Premium会員: {is_premium}
   "estimated_age": 推定年齢（数値、不明な場合はnull）,
   "age_reasoning": "年齢推定の根拠",
   "age_score": 年齢スコア（0-30）,
-  "it_experience_score": IT経験スコア（0-35）,
+  "it_experience_score": IT経験スコア（0-50）,
   "position_score": ポジションスコア（0-20）,
   "total_score": 合計スコア（age_score + it_experience_score + position_score）,
   "decision": "send" または "skip",
