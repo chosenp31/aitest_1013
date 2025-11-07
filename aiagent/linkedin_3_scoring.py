@@ -145,11 +145,15 @@ LinkedIn Premium会員: {is_premium}
   "age_score": 年齢スコア（0-30、年齢不明の場合も30点）,
   "it_experience_score": IT経験スコア（0-50）,
   "position_score": ポジションスコア（0-30）,
-  "total_score": 合計スコア（age_score + it_experience_score + position_score）,
+  "total_score": 合計スコア（age_score + it_experience_score + position_score を正確に計算すること）,
   "decision": "send" または "skip",
   "reason": "スコアリングの理由（簡潔に1-2文）",
   "exclusion_reason": "除外理由（skipの場合のみ、1言で記載。例: Premium会員のため、人材関係者のため、経営層のため、41歳以上のため、KPMG在籍のため、フューチャー在籍のため、IT業界経験不足のため）"
 }}
+
+【重要：合計スコアの計算について】
+- total_score は必ず age_score + it_experience_score + position_score の正確な合計値にすること
+- 例: age_score=30, it_experience_score=0, position_score=0 の場合 → total_score=30（60ではない）
 
 【最終チェック】
 - 除外条件に該当する場合は、必ず decision: "skip", total_score: 0 にすること
@@ -370,7 +374,32 @@ def validate_and_enforce_exclusion(candidate, scoring_result):
                 "exclusion_reason": "人材関係者のため"
             }
 
-    # 除外条件に該当しない場合は、元の結果をそのまま返す
+    # 3. 合計スコアの再計算（OpenAIの計算ミスを修正）
+    age_score = scoring_result.get("age_score", 0)
+    it_experience_score = scoring_result.get("it_experience_score", 0)
+    position_score = scoring_result.get("position_score", 0)
+
+    # 除外条件に該当する場合（Premium会員、人材関係、経営層、41歳以上、KPMG等）
+    decision = scoring_result.get("decision", "skip")
+    exclusion_reason = scoring_result.get("exclusion_reason", "")
+
+    if decision == "skip" and exclusion_reason and exclusion_reason != "IT業界経験不足のため":
+        # 明確な除外理由がある場合は total_score = 0
+        scoring_result["total_score"] = 0
+    else:
+        # それ以外は正確な合計値を計算
+        correct_total = age_score + it_experience_score + position_score
+        scoring_result["total_score"] = correct_total
+
+        # 60点未満の場合はskipに変更
+        if correct_total < 60:
+            scoring_result["decision"] = "skip"
+            scoring_result["exclusion_reason"] = "IT業界経験不足のため"
+        else:
+            scoring_result["decision"] = "send"
+            scoring_result["exclusion_reason"] = ""
+
+    # 検証済みの結果を返す
     return scoring_result
 
 # ==============================
