@@ -266,27 +266,43 @@ def send_message(driver, profile_url, name, message):
         human_sleep(0.5, 1)
 
         try:
-            # JavaScriptで直接テキストを設定（絵文字対応）+ Reactイベントをトリガー
+            # JavaScriptで直接テキストを設定（絵文字対応）+ より正確なInputEventをトリガー
             driver.execute_script("""
                 const element = arguments[0];
                 const text = arguments[1];
 
+                // 要素をフォーカス
+                element.focus();
+
                 // テキストを設定
-                element.innerText = text;
+                element.textContent = text;
 
-                // Reactが検知できるように複数のイベントをトリガー
-                element.dispatchEvent(new Event('focus', { bubbles: true }));
-                element.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true }));
-                element.dispatchEvent(new Event('input', { bubbles: true }));
-                element.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, cancelable: true }));
-                element.dispatchEvent(new Event('change', { bubbles: true }));
+                // InputEventを適切なプロパティで作成（LinkedInのReactが期待する形式）
+                const inputEvent = new InputEvent('input', {
+                    bubbles: true,
+                    cancelable: true,
+                    inputType: 'insertText',
+                    data: text,
+                    composed: true
+                });
 
-                // さらに、最後にスペースを追加して削除することでReactの変更検知を確実にする
-                const originalText = element.innerText;
-                element.innerText = originalText + ' ';
-                element.dispatchEvent(new Event('input', { bubbles: true }));
-                element.innerText = originalText;
-                element.dispatchEvent(new Event('input', { bubbles: true }));
+                // イベントをディスパッチ
+                element.dispatchEvent(inputEvent);
+
+                // changeイベントも発火
+                const changeEvent = new Event('change', {
+                    bubbles: true,
+                    cancelable: true
+                });
+                element.dispatchEvent(changeEvent);
+
+                // カーソルを最後に移動
+                const range = document.createRange();
+                const sel = window.getSelection();
+                range.selectNodeContents(element);
+                range.collapse(false);
+                sel.removeAllRanges();
+                sel.addRange(range);
             """, message_box, message)
             human_sleep(2, 3)
         except Exception as e:
