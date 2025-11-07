@@ -74,14 +74,52 @@ LinkedIn Premium会員: {is_premium}
 
 スキル: {skills}
 
-【評価基準】
+【重要：最初に除外条件をチェック】
+以下の条件に1つでも該当する場合は、スコアリングを行わず即座に除外してください：
+
+1. **LinkedIn Premium会員の除外（最優先）**
+   - is_premium が "True" または "yes" の場合 → 即座に除外
+   - decision: "skip", total_score: 0, exclusion_reason: "Premium会員のため"
+
+2. **人材関係者の除外（最優先）**
+   - ヘッドラインまたは職歴に以下のキーワードが含まれる場合 → 即座に除外
+   - キーワード例：
+     * 「採用」「リクルーター」「リクルート」「人材紹介」「人材派遣」
+     * 「ヘッドハンター」「キャリアアドバイザー」「人事コンサルタント」
+     * 「新卒採用」「中途採用」「エンジニア採用」「採用担当」「採用立ち上げ」
+     * 「HR」「Human Resources」「Talent Acquisition」「TA」
+   - decision: "skip", total_score: 0, exclusion_reason: "人材関係者のため"
+
+3. **経営層の除外**
+   - ヘッドラインまたは職歴に以下の役職が含まれる場合 → 即座に除外
+   - 役職例：社長、CEO、CIO、CTO、CFO、代表取締役、執行役員、取締役、Co-founder、Founder
+   - decision: "skip", total_score: 0, exclusion_reason: "経営層のため"
+
+4. **41歳以上の除外**
+   - 学歴から推定した年齢が41歳以上 → 即座に除外
+   - decision: "skip", total_score: 0, exclusion_reason: "41歳以上のため"
+
+5. **KPMG・フューチャー在籍者の除外**
+   - 職歴に「KPMG」または「フューチャー」を含む企業名がある場合 → 即座に除外
+   - decision: "skip", total_score: 0, exclusion_reason: "KPMG在籍のため" または "フューチャー在籍のため"
+
+【具体例】
+例1: ヘッドライン「株式会社ヤプリ←ディップ株式会社|新卒採用|中途採用|エンジニア採用|採用立ち上げ」
+→ 「採用」が含まれるため、人材関係者として即座に除外
+
+例2: is_premium = "True"
+→ Premium会員として即座に除外
+
+例3: 職歴に「KPMG税理士法人」が含まれる
+→ KPMG在籍者として即座に除外
+
+【評価基準（除外されなかった場合のみ）】
 
 1. 年齢評価（0-30点）
    - 学歴の卒業年から年齢を推定（大学卒業を22歳と仮定）
    - 計算式: 現在年齢 = 2025年 - 卒業年 + 22歳
    - 22-40歳: 30点（一律）
-   - 41歳以上: **即座に除外（スコア0、decision: "skip"）**
-   - **年齢不明の場合: 除外せず、年齢スコア0点として扱う（他の項目でスコアリング）**
+   - 年齢不明の場合: 年齢スコア0点として扱う（他の項目でスコアリング）
 
 2. IT業界経験評価（0-35点）
    - キーワード: SIer, ITコンサルタント, エンジニア, DXエンジニア, システム開発, クラウド, AI, データサイエンス
@@ -90,21 +128,10 @@ LinkedIn Premium会員: {is_premium}
    - 過去にIT業界経験あり: 15点
    - IT業界経験なし: 0点
 
-3. ポジション評価（-30 〜 +20点）
+3. ポジション評価（0-20点）
    - エンジニア・開発者: +20点
    - ITコンサルタント: +20点
    - プロジェクトマネージャー: +20点
-   - 以下は**即座に除外（スコア0、decision: "skip"）**:
-     - 経営層: 社長, CEO, CIO, CTO, CFO, 代表取締役, 執行役員, 取締役
-     - HR・人材関係: 人材紹介, 人材派遣, リクルーター, 採用担当, ヘッドハンター, キャリアアドバイザー, 人事コンサルタント
-
-4. その他の除外条件（即座にスコア0、decision: "skip"）
-   - LinkedIn Premium会員（is_premium: "True"または"yes"の場合）
-   - 学生（在学中）
-   - IT業界と無関係（飲食、販売、製造、小売など）
-   - これまでの職歴に以下の企業名が含まれる者（現在・過去問わず）:
-     * 「フューチャー」を含む企業（フューチャー株式会社、フューチャーアーキテクト株式会社など）
-     * 「KPMG」を含む企業（KPMGコンサルティング、KPMG税理士法人など）
 
 【出力形式】
 以下のJSON形式で出力してください。他の説明は一切不要です。
@@ -114,21 +141,17 @@ LinkedIn Premium会員: {is_premium}
   "age_reasoning": "年齢推定の根拠",
   "age_score": 年齢スコア（0-30）,
   "it_experience_score": IT経験スコア（0-35）,
-  "position_score": ポジションスコア（-30 〜 +35）,
+  "position_score": ポジションスコア（0-20）,
   "total_score": 合計スコア（age_score + it_experience_score + position_score）,
   "decision": "send" または "skip",
   "reason": "スコアリングの理由（簡潔に1-2文）",
   "exclusion_reason": "除外理由（skipの場合のみ、1言で記載。例: Premium会員のため、人材関係者のため、経営層のため、41歳以上のため、KPMG在籍のため、フューチャー在籍のため、IT業界経験不足のため）"
 }}
 
-【重要な注意事項】
-- LinkedIn Premium会員（is_premium: "True"または"yes"）は必ず除外（decision: "skip"、total_score: 0、exclusion_reason: "Premium会員のため"）
-- 41歳以上は必ず除外（decision: "skip"、total_score: 0、exclusion_reason: "41歳以上のため"）
-- 経営層（社長、CEO、取締役等）は必ず除外（decision: "skip"、total_score: 0、exclusion_reason: "経営層のため"）
-- HR・人材関係（リクルーター、採用担当等）は必ず除外（decision: "skip"、total_score: 0、exclusion_reason: "人材関係者のため"）
-- 職歴に「フューチャー」を含む企業がある者は必ず除外（現在・過去問わず）（decision: "skip"、total_score: 0、exclusion_reason: "フューチャー在籍のため"）
-- 職歴に「KPMG」を含む企業がある者は必ず除外（現在・過去問わず）（decision: "skip"、total_score: 0、exclusion_reason: "KPMG在籍のため"）
-- 合計スコアが60点以上の場合は "send"、それ未満は "skip"（exclusion_reason: "IT業界経験不足のため"）
+【最終チェック】
+- 除外条件に該当する場合は、必ず decision: "skip", total_score: 0 にすること
+- 合計スコアが60点以上で除外条件に該当しない場合のみ "send"
+- それ未満は "skip"（exclusion_reason: "IT業界経験不足のため"）
 - sendの場合は exclusion_reason に空文字 "" を設定
 """
 
