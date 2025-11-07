@@ -47,14 +47,59 @@ def load_profiles_master(profiles_master_file):
             axis=1
         )
 
+    # 送信対象の表示：○/✖️/判定前
+    if 'scoring_decision' in df.columns:
+        def get_target_display(decision):
+            if pd.isna(decision) or decision == '':
+                return '判定前'
+            elif decision == 'send':
+                return '○'
+            elif decision == 'skip':
+                return '✖️'
+            else:
+                return '判定前'
+
+        df['送信対象_display'] = df['scoring_decision'].apply(get_target_display)
+
+    # 送信ステータスの表示
+    if 'scoring_decision' in df.columns and 'message_sent_status' in df.columns:
+        def get_status_display(row):
+            decision = row.get('scoring_decision', '')
+            status = row.get('message_sent_status', '')
+
+            # エッジケース: skipなのにsuccess → 送信済を優先
+            if status == 'success':
+                return '送信済'
+
+            # 判定前
+            if pd.isna(decision) or decision == '':
+                return '判定前'
+
+            # skip → 送信対象外
+            if decision == 'skip':
+                return '送信対象外'
+
+            # send の場合
+            if decision == 'send':
+                if status == 'pending':
+                    return '送信待'
+                elif status == 'error':
+                    return '送信エラー'
+
+            return '判定前'
+
+        df['送信ステータス_display'] = df.apply(get_status_display, axis=1)
+
     return df
 
 def save_profiles_master(df, profiles_master_file):
     """profiles_master.csv を保存"""
-    # total_score_display列は保存しない（表示用の列）
+    # 表示用の列は保存しない
     save_df = df.copy()
-    if 'total_score_display' in save_df.columns:
-        save_df = save_df.drop(columns=['total_score_display'])
+    display_columns = ['total_score_display', '送信対象_display', '送信ステータス_display']
+    for col in display_columns:
+        if col in save_df.columns:
+            save_df = save_df.drop(columns=[col])
 
     save_df.to_csv(profiles_master_file, index=False, encoding='utf-8')
 
@@ -77,15 +122,28 @@ def load_messages(generated_messages_file):
 def get_statistics(df):
     """統計情報を取得"""
     total = len(df)
-    success = len(df[df['message_sent_status'] == 'success'])
-    pending = len(df[df['message_sent_status'] == 'pending'])
-    error = len(df[df['message_sent_status'] == 'error'])
+
+    # 送信ステータス_display列を使用して集計
+    if '送信ステータス_display' in df.columns:
+        sent = len(df[df['送信ステータス_display'] == '送信済'])
+        waiting = len(df[df['送信ステータス_display'] == '送信待'])
+        excluded = len(df[df['送信ステータス_display'] == '送信対象外'])
+        error = len(df[df['送信ステータス_display'] == '送信エラー'])
+        pending_judge = len(df[df['送信ステータス_display'] == '判定前'])
+    else:
+        sent = 0
+        waiting = 0
+        excluded = 0
+        error = 0
+        pending_judge = 0
 
     return {
         'total': total,
-        'success': success,
-        'pending': pending,
-        'error': error
+        'sent': sent,
+        'waiting': waiting,
+        'excluded': excluded,
+        'error': error,
+        'pending_judge': pending_judge
     }
 
 # ==============================
@@ -116,14 +174,16 @@ def main():
     stats = get_statistics(df)
 
     st.markdown("### 📈 統計情報")
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
         st.metric("全件", stats['total'])
     with col2:
-        st.metric("✅ 送信成功", stats['success'])
+        st.metric("✅ 送信済", stats['sent'])
     with col3:
-        st.metric("⏳ 送信待ち", stats['pending'])
+        st.metric("⏳ 送信待", stats['waiting'])
     with col4:
+        st.metric("⊘ 対象外", stats['excluded'])
+    with col5:
         st.metric("❌ エラー", stats['error'])
 
     st.markdown("---")
@@ -136,13 +196,13 @@ def main():
     with col1:
         status_filter = st.selectbox(
             "送信ステータス",
-            ["全て", "送信成功 (success)", "送信待ち (pending)", "エラー (error)"]
+            ["全て", "送信済", "送信待", "送信対象外", "送信エラー", "判定前"]
         )
 
     with col2:
         decision_filter = st.selectbox(
-            "判定結果",
-            ["全て", "送信対象 (send)", "スキップ (skip)", "未判定"]
+            "送信対象",
+            ["全て", "○", "✖️", "判定前"]
         )
 
     with col3:
@@ -151,19 +211,13 @@ def main():
     # フィルタリング処理
     filtered_df = df.copy()
 
-    if status_filter == "送信成功 (success)":
-        filtered_df = filtered_df[filtered_df['message_sent_status'] == 'success']
-    elif status_filter == "送信待ち (pending)":
-        filtered_df = filtered_df[filtered_df['message_sent_status'] == 'pending']
-    elif status_filter == "エラー (error)":
-        filtered_df = filtered_df[filtered_df['message_sent_status'] == 'error']
+    # 送信ステータスでフィルタリング（送信ステータス_display列を使用）
+    if status_filter != "全て" and '送信ステータス_display' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['送信ステータス_display'] == status_filter]
 
-    if decision_filter == "送信対象 (send)":
-        filtered_df = filtered_df[filtered_df['scoring_decision'] == 'send']
-    elif decision_filter == "スキップ (skip)":
-        filtered_df = filtered_df[filtered_df['scoring_decision'] == 'skip']
-    elif decision_filter == "未判定":
-        filtered_df = filtered_df[filtered_df['scoring_decision'].isna() | (filtered_df['scoring_decision'] == '')]
+    # 送信対象でフィルタリング（送信対象_display列を使用）
+    if decision_filter != "全て" and '送信対象_display' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['送信対象_display'] == decision_filter]
 
     if name_search:
         filtered_df = filtered_df[filtered_df['name'].str.contains(name_search, na=False)]
@@ -182,18 +236,10 @@ def main():
     # 表示用のデータフレーム作成
     display_df = filtered_df.copy()
 
-    # ステータスアイコン追加
-    status_icons = {
-        'success': '✅',
-        'pending': '⏳',
-        'error': '❌'
-    }
-    display_df['アイコン'] = display_df['message_sent_status'].map(status_icons)
-
     # 表示列を選択
-    display_columns = ['アイコン', 'name', 'total_score_display', 'scoring_decision', 'exclusion_reason', 'message_sent_status', 'message_sent_at', 'last_send_error']
+    display_columns = ['name', 'total_score_display', '送信対象_display', 'exclusion_reason', '送信ステータス_display', 'message_sent_at', 'last_send_error']
     display_df_filtered = display_df[display_columns].copy()
-    display_df_filtered.columns = ['', '名前', 'スコア', '判定', '除外理由', '送信ステータス', '送信日時', 'エラー内容']
+    display_df_filtered.columns = ['名前', 'スコア', '送信対象', '除外理由', '送信ステータス', '送信日時', 'エラー内容']
 
     # データエディタで表示
     st.dataframe(
@@ -226,14 +272,16 @@ def main():
             st.text(f"つながり日: {selected_row['connected_date']}")
             score_display = selected_row.get('total_score_display', selected_row.get('total_score', '-'))
             st.text(f"スコア: {score_display}")
-            st.text(f"判定: {selected_row['scoring_decision']}")
+            target_display = selected_row.get('送信対象_display', '判定前')
+            st.text(f"送信対象: {target_display}")
             if selected_row.get('exclusion_reason'):
                 st.text(f"除外理由: {selected_row['exclusion_reason']}")
             st.text(f"プロフィールURL: {profile_url}")
 
         with col2:
             st.markdown("#### 📨 送信情報")
-            st.text(f"送信ステータス: {selected_row['message_sent_status']}")
+            status_display = selected_row.get('送信ステータス_display', '判定前')
+            st.text(f"送信ステータス: {status_display}")
             st.text(f"送信日時: {selected_row['message_sent_at']}")
             if selected_row['last_send_error']:
                 st.error(f"エラー内容: {selected_row['last_send_error']}")
