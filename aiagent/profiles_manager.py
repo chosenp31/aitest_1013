@@ -33,17 +33,30 @@ def load_profiles_master(profiles_master_file):
         return pd.DataFrame(columns=[
             "profile_url", "name", "connected_date",
             "profile_fetched", "profile_fetched_at",
-            "total_score", "scoring_decision",
+            "total_score", "scoring_decision", "exclusion_reason",
             "message_generated", "message_generated_at",
             "message_sent_status", "message_sent_at", "last_send_error"
         ])
 
     df = pd.read_csv(profiles_master_file)
+
+    # スコア表示の調整：skipの場合は"-"で表示
+    if 'total_score' in df.columns and 'scoring_decision' in df.columns:
+        df['total_score_display'] = df.apply(
+            lambda row: '-' if row.get('scoring_decision') == 'skip' else row.get('total_score', ''),
+            axis=1
+        )
+
     return df
 
 def save_profiles_master(df, profiles_master_file):
     """profiles_master.csv を保存"""
-    df.to_csv(profiles_master_file, index=False, encoding='utf-8')
+    # total_score_display列は保存しない（表示用の列）
+    save_df = df.copy()
+    if 'total_score_display' in save_df.columns:
+        save_df = save_df.drop(columns=['total_score_display'])
+
+    save_df.to_csv(profiles_master_file, index=False, encoding='utf-8')
 
 def load_messages(generated_messages_file):
     """generated_messages.csv を読み込む"""
@@ -178,9 +191,9 @@ def main():
     display_df['アイコン'] = display_df['message_sent_status'].map(status_icons)
 
     # 表示列を選択
-    display_columns = ['アイコン', 'name', 'total_score', 'message_sent_status', 'message_sent_at', 'last_send_error']
+    display_columns = ['アイコン', 'name', 'total_score_display', 'scoring_decision', 'exclusion_reason', 'message_sent_status', 'message_sent_at', 'last_send_error']
     display_df_filtered = display_df[display_columns].copy()
-    display_df_filtered.columns = ['', '名前', 'スコア', '送信ステータス', '送信日時', 'エラー内容']
+    display_df_filtered.columns = ['', '名前', 'スコア', '判定', '除外理由', '送信ステータス', '送信日時', 'エラー内容']
 
     # データエディタで表示
     st.dataframe(
@@ -211,8 +224,11 @@ def main():
             st.markdown("#### 📄 基本情報")
             st.text(f"名前: {selected_row['name']}")
             st.text(f"つながり日: {selected_row['connected_date']}")
-            st.text(f"スコア: {selected_row['total_score']}点")
+            score_display = selected_row.get('total_score_display', selected_row.get('total_score', '-'))
+            st.text(f"スコア: {score_display}")
             st.text(f"判定: {selected_row['scoring_decision']}")
+            if selected_row.get('exclusion_reason'):
+                st.text(f"除外理由: {selected_row['exclusion_reason']}")
             st.text(f"プロフィールURL: {profile_url}")
 
         with col2:

@@ -104,7 +104,7 @@ def reset_messages(account_name, paths):
     fieldnames = [
         "profile_url", "name", "connected_date",
         "profile_fetched", "profile_fetched_at",
-        "total_score", "scoring_decision",
+        "total_score", "scoring_decision", "exclusion_reason",
         "message_generated", "message_generated_at",
         "message_sent_status", "message_sent_at", "last_send_error"
     ]

@@ -89,7 +89,7 @@ def save_profiles_master(profiles_master, profiles_master_file):
     fieldnames = [
         "profile_url", "name", "connected_date",
         "profile_fetched", "profile_fetched_at",
-        "total_score", "scoring_decision",
+        "total_score", "scoring_decision", "exclusion_reason",
         "message_generated", "message_generated_at",
         "message_sent_status", "message_sent_at", "last_send_error"
     ]
@@ -113,6 +113,7 @@ def update_profile_master(profiles_master, profile_url, updates):
             "profile_fetched_at": "",
             "total_score": "",
             "scoring_decision": "",
+            "exclusion_reason": "",
             "message_generated": "no",
             "message_generated_at": "",
             "message_sent_status": "pending",

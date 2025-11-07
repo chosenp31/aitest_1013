@@ -117,16 +117,19 @@ LinkedIn Premium会員: {is_premium}
   "position_score": ポジションスコア（-30 〜 +35）,
   "total_score": 合計スコア（age_score + it_experience_score + position_score）,
   "decision": "send" または "skip",
-  "reason": "スコアリングの理由（簡潔に1-2文）"
+  "reason": "スコアリングの理由（簡潔に1-2文）",
+  "exclusion_reason": "除外理由（skipの場合のみ、1言で記載。例: Premium会員のため、人材関係者のため、経営層のため、41歳以上のため、KPMG在籍のため、フューチャー在籍のため、IT業界経験不足のため）"
 }}
 
 【重要な注意事項】
-- LinkedIn Premium会員（is_premium: "True"または"yes"）は必ず除外（decision: "skip"、total_score: 0）
-- 41歳以上は必ず除外（decision: "skip"、total_score: 0）
-- 経営層（社長、CEO、取締役等）は必ず除外（decision: "skip"、total_score: 0）
-- HR・人材関係（リクルーター、採用担当等）は必ず除外（decision: "skip"、total_score: 0）
-- 職歴に「フューチャー」または「KPMG」を含む企業がある者は必ず除外（現在・過去問わず）（decision: "skip"、total_score: 0）
-- 合計スコアが60点以上の場合は "send"、それ未満は "skip"
+- LinkedIn Premium会員（is_premium: "True"または"yes"）は必ず除外（decision: "skip"、total_score: 0、exclusion_reason: "Premium会員のため"）
+- 41歳以上は必ず除外（decision: "skip"、total_score: 0、exclusion_reason: "41歳以上のため"）
+- 経営層（社長、CEO、取締役等）は必ず除外（decision: "skip"、total_score: 0、exclusion_reason: "経営層のため"）
+- HR・人材関係（リクルーター、採用担当等）は必ず除外（decision: "skip"、total_score: 0、exclusion_reason: "人材関係者のため"）
+- 職歴に「フューチャー」を含む企業がある者は必ず除外（現在・過去問わず）（decision: "skip"、total_score: 0、exclusion_reason: "フューチャー在籍のため"）
+- 職歴に「KPMG」を含む企業がある者は必ず除外（現在・過去問わず）（decision: "skip"、total_score: 0、exclusion_reason: "KPMG在籍のため"）
+- 合計スコアが60点以上の場合は "send"、それ未満は "skip"（exclusion_reason: "IT業界経験不足のため"）
+- sendの場合は exclusion_reason に空文字 "" を設定
 """
 
 # OpenAIクライアント
@@ -161,7 +164,7 @@ def save_profiles_master(profiles_master, profiles_master_file):
     fieldnames = [
         "profile_url", "name", "connected_date",
         "profile_fetched", "profile_fetched_at",
-        "total_score", "scoring_decision",
+        "total_score", "scoring_decision", "exclusion_reason",
         "message_generated", "message_generated_at",
         "message_sent_status", "message_sent_at", "last_send_error"
     ]
@@ -185,6 +188,7 @@ def update_profile_master(profiles_master, profile_url, updates):
             "profile_fetched_at": "",
             "total_score": "",
             "scoring_decision": "",
+            "exclusion_reason": "",
             "message_generated": "no",
             "message_generated_at": "",
             "message_sent_status": "pending",
@@ -252,7 +256,8 @@ def score_candidate(candidate):
             "position_score": 0,
             "total_score": 0,
             "decision": "skip",
-            "reason": f"APIエラー: {e}"
+            "reason": f"APIエラー: {e}",
+            "exclusion_reason": "APIエラー"
         }
 
 # ==============================
@@ -323,17 +328,21 @@ def main(account_name, paths, use_scoring, min_score):
                     decision = scored.get('decision', 'skip')
                     total_score = scored.get('total_score', 0)
                     reason = scored.get('reason', '')
+                    exclusion_reason = scored.get('exclusion_reason', '')
 
                     if decision == "send":
                         print(f"   ✅ 送信対象: {total_score}点")
                     else:
                         print(f"   ⚪ スキップ: {total_score}点")
+                        if exclusion_reason:
+                            print(f"   除外理由: {exclusion_reason}")
                     print(f"   理由: {reason}\n")
 
-                    # profiles_master 更新
+                    # profiles_master 更新（skipの場合はスコアを"-"にする）
                     update_profile_master(profiles_master, profile_url, {
-                        'total_score': str(total_score),
-                        'scoring_decision': decision
+                        'total_score': str(total_score) if decision == "send" else "-",
+                        'scoring_decision': decision,
+                        'exclusion_reason': exclusion_reason
                     })
 
                     import time
