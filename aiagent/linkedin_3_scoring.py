@@ -88,11 +88,14 @@ LinkedIn Premium会員: {is_premium}
      * 転職・人材系: 「転職」「人材紹介」「人材派遣」「人材コンサルタント」「人材サービス」
      * 人事系: 「人事」「HR」「Human Resources」「人事コンサルタント」
      * その他: 「ヘッドハンター」「ヘッドハンティング」「キャリアアドバイザー」「キャリアコンサルタント」「Talent Acquisition」「TA」「スカウト」「RPO」「就活」「就職支援」
+   - 人材系企業：リクルート、パーソル、マイナビ、エン・ジャパン、ビズリーチ、doda、パソナ、ランスタッド、アデコなど
    - decision: "skip", total_score: 0, exclusion_reason: "人材関係者のため"
 
 3. **経営層の除外**
    - ヘッドラインまたは職歴に以下の役職が含まれる場合 → 即座に除外
-   - 役職例：社長、CEO、CIO、CTO、CFO、代表取締役、執行役員、取締役、Co-founder、Founder
+   - CXO系：CEO、CTO、CIO、CFO、COO、CMO、CPO、CHRO、CSO
+   - 役員系：社長、会長、副社長、代表取締役、取締役、執行役員、常務、専務、監査役
+   - 創業者系：Founder、Co-founder、創業者、共同創業者
    - decision: "skip", total_score: 0, exclusion_reason: "経営層のため"
 
 4. **41歳以上の除外**
@@ -112,6 +115,12 @@ LinkedIn Premium会員: {is_premium}
 
 例3: 職歴に「KPMG税理士法人」が含まれる
 → KPMG在籍者として即座に除外
+
+例4: 職歴に「代表取締役CEO @ ドビー・アンド株式会社」が含まれる
+→ 「CEO」が含まれるため、経営層として即座に除外
+
+例5: 職歴に「リクルートキャリア」が含まれる
+→ 人材系企業のため、人材関係者として即座に除外
 
 【評価基準（除外されなかった場合のみ）】
 
@@ -374,7 +383,68 @@ def validate_and_enforce_exclusion(candidate, scoring_result):
                 "exclusion_reason": "人材関係者のため"
             }
 
-    # 3. 合計スコアの再計算（OpenAIの計算ミスを修正）
+    # 3. CXO系・経営層チェック
+    executive_keywords = [
+        # CXO系
+        'ceo', 'cto', 'cio', 'cfo', 'coo', 'cmo', 'cpo', 'chro', 'cso',
+        # 役員系
+        '代表取締役', '取締役', '執行役員', '常務', '専務', '監査役',
+        # 創業者系
+        'founder', 'co-founder', '創業者', '共同創業者',
+        # その他
+        '社長', '会長', '副社長'
+    ]
+
+    for keyword in executive_keywords:
+        if keyword in text_to_check:
+            return {
+                "estimated_age": scoring_result.get("estimated_age"),
+                "age_reasoning": scoring_result.get("age_reasoning", ""),
+                "age_score": 0,
+                "it_experience_score": 0,
+                "position_score": 0,
+                "total_score": 0,
+                "decision": "skip",
+                "reason": f"役職「{keyword}」が検出されたため除外",
+                "exclusion_reason": "経営層のため"
+            }
+
+    # 4. 人材系企業チェック
+    hr_companies = [
+        # リクルート系
+        'リクルート', 'リクルートホールディングス', 'リクルートキャリア', 'リクルートスタッフィング', 'リクルートジョブズ',
+        'recruit', 'recruit holdings', 'recruit career',
+        # パーソル系
+        'パーソル', 'パーソルキャリア', 'パーソルテンプスタッフ', 'パーソルプロセス&テクノロジー', 'インテリジェンス',
+        'persol', 'persol career', 'tempstaff', 'intelligence',
+        # マイナビ系
+        'マイナビ', 'mynavi',
+        # エン・ジャパン系
+        'エン・ジャパン', 'エン転職', 'en japan',
+        # その他大手
+        'ビズリーチ', 'bizreach', 'type', 'キャリアデザインセンター',
+        'doda', 'ジェイエイシーリクルートメント', 'jac recruitment',
+        'パソナ', 'pasona', 'ランスタッド', 'randstad',
+        'アデコ', 'adecco', 'マンパワー', 'manpower',
+        # 社名キーワード
+        '人材', '採用支援', '転職支援', 'キャリア支援', '人事コンサル'
+    ]
+
+    for company in hr_companies:
+        if company in text_to_check:
+            return {
+                "estimated_age": scoring_result.get("estimated_age"),
+                "age_reasoning": scoring_result.get("age_reasoning", ""),
+                "age_score": 0,
+                "it_experience_score": 0,
+                "position_score": 0,
+                "total_score": 0,
+                "decision": "skip",
+                "reason": f"人材系企業「{company}」が検出されたため除外",
+                "exclusion_reason": "人材関係者のため"
+            }
+
+    # 5. 合計スコアの再計算（OpenAIの計算ミスを修正）
     age_score = scoring_result.get("age_score", 0)
     it_experience_score = scoring_result.get("it_experience_score", 0)
     position_score = scoring_result.get("position_score", 0)
