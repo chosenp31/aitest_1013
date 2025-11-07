@@ -468,6 +468,37 @@ def main(account_name, paths, use_scoring, min_score):
 
                     print(f"[{idx}/{len(profiles_to_score)}] 📊 {name} をスコアリング中...")
 
+                    # プロフィール情報を表示
+                    headline = candidate.get('headline', '情報なし')
+                    location = candidate.get('location', '情報なし')
+                    is_premium = candidate.get('is_premium', False)
+                    is_premium_str = "Premium会員" if str(is_premium).lower() in ['true', 'yes', '1'] else "通常会員"
+                    experiences = candidate.get('experiences', '')
+                    education = candidate.get('education', '')
+
+                    print(f"   📝 プロフィール情報:")
+                    print(f"      ・ヘッドライン: {headline}")
+                    print(f"      ・場所: {location}")
+                    print(f"      ・LinkedIn: {is_premium_str}")
+
+                    # 職歴（最初の2件のみ表示）
+                    if experiences and experiences != '情報なし':
+                        exp_lines = [line.strip() for line in experiences.split('\n') if line.strip()]
+                        print(f"      ・職歴:")
+                        for exp in exp_lines[:2]:
+                            print(f"         - {exp}")
+                        if len(exp_lines) > 2:
+                            print(f"         - ... 他{len(exp_lines)-2}件")
+
+                    # 学歴（最初の1件のみ表示）
+                    if education and education != '情報なし':
+                        edu_lines = [line.strip() for line in education.split('\n') if line.strip()]
+                        if edu_lines:
+                            print(f"      ・学歴: {edu_lines[0]}")
+                            if len(edu_lines) > 1:
+                                print(f"               ... 他{len(edu_lines)-1}件")
+                    print()
+
                     # OpenAI APIでスコアリング
                     scored = score_candidate(candidate)
 
