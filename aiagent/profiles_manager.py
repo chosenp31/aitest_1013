@@ -241,9 +241,24 @@ def main():
     display_df_filtered = display_df[display_columns].copy()
     display_df_filtered.columns = ['名前', 'スコア', '送信対象', '除外理由', '送信ステータス', '送信日時', 'エラー内容']
 
+    # スタイリング関数
+    def style_row(row):
+        """行ごとのスタイルを設定"""
+        # 送信対象が✖️の場合、グレーアウト
+        if row['送信対象'] == '✖️':
+            return ['background-color: #f0f0f0; color: #888888'] * len(row)
+        # 送信ステータスが「送信待」の場合、薄い黄色
+        elif row['送信ステータス'] == '送信待':
+            return ['background-color: #fffbea'] * len(row)
+        else:
+            return [''] * len(row)
+
+    # スタイルを適用
+    styled_df = display_df_filtered.style.apply(style_row, axis=1)
+
     # データエディタで表示
     st.dataframe(
-        display_df_filtered,
+        styled_df,
         use_container_width=True,
         hide_index=True,
         height=400
