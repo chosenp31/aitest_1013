@@ -62,10 +62,11 @@ def load_profiles_master(profiles_master_file):
         df['送信対象_display'] = df['scoring_decision'].apply(get_target_display)
 
     # 送信ステータスの表示
-    if 'scoring_decision' in df.columns and 'message_sent_status' in df.columns:
+    if 'scoring_decision' in df.columns and 'message_sent_status' in df.columns and 'message_generated' in df.columns:
         def get_status_display(row):
             decision = row.get('scoring_decision', '')
             status = row.get('message_sent_status', '')
+            message_generated = row.get('message_generated', '')
 
             # エッジケース: skipなのにsuccess → 送信済を優先
             if status == 'success':
@@ -82,7 +83,11 @@ def load_profiles_master(profiles_master_file):
             # send の場合
             if decision == 'send':
                 if status == 'pending':
-                    return '送信待'
+                    # メッセージ生成済みかどうかで分岐
+                    if message_generated == 'yes':
+                        return '送信待'
+                    else:
+                        return 'メッセージ未生成'
                 elif status == 'error':
                     return '送信エラー'
 
@@ -127,12 +132,14 @@ def get_statistics(df):
     if '送信ステータス_display' in df.columns:
         sent = len(df[df['送信ステータス_display'] == '送信済'])
         waiting = len(df[df['送信ステータス_display'] == '送信待'])
+        message_not_generated = len(df[df['送信ステータス_display'] == 'メッセージ未生成'])
         excluded = len(df[df['送信ステータス_display'] == '送信対象外'])
         error = len(df[df['送信ステータス_display'] == '送信エラー'])
         pending_judge = len(df[df['送信ステータス_display'] == '判定前'])
     else:
         sent = 0
         waiting = 0
+        message_not_generated = 0
         excluded = 0
         error = 0
         pending_judge = 0
@@ -141,6 +148,7 @@ def get_statistics(df):
         'total': total,
         'sent': sent,
         'waiting': waiting,
+        'message_not_generated': message_not_generated,
         'excluded': excluded,
         'error': error,
         'pending_judge': pending_judge
@@ -174,7 +182,7 @@ def main():
     stats = get_statistics(df)
 
     st.markdown("### 📈 統計情報")
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
     with col1:
         st.metric("全件", stats['total'])
     with col2:
@@ -182,8 +190,10 @@ def main():
     with col3:
         st.metric("⏳ 送信待", stats['waiting'])
     with col4:
-        st.metric("⊘ 対象外", stats['excluded'])
+        st.metric("📝 未生成", stats['message_not_generated'])
     with col5:
+        st.metric("⊘ 対象外", stats['excluded'])
+    with col6:
         st.metric("❌ エラー", stats['error'])
 
     st.markdown("---")
@@ -196,7 +206,7 @@ def main():
     with col1:
         status_filter = st.selectbox(
             "送信ステータス",
-            ["全て", "送信済", "送信待", "送信対象外", "送信エラー", "判定前"]
+            ["全て", "送信済", "送信待", "メッセージ未生成", "送信対象外", "送信エラー", "判定前"]
         )
 
     with col2:
@@ -250,6 +260,9 @@ def main():
         # 送信ステータスが「送信待」の場合、薄い黄色
         elif row['送信ステータス'] == '送信待':
             return ['background-color: #fffbea'] * len(row)
+        # 送信ステータスが「メッセージ未生成」の場合、薄いオレンジ
+        elif row['送信ステータス'] == 'メッセージ未生成':
+            return ['background-color: #fff3e0'] * len(row)
         else:
             return [''] * len(row)
 
