@@ -259,52 +259,15 @@ def send_message(driver, profile_url, name, message):
         if not message_box:
             return "error", "メッセージ入力欄が見つかりません"
 
-        # メッセージを入力（JavaScriptで設定して絵文字に対応）
+        # メッセージを入力
         driver.execute_script("arguments[0].focus();", message_box)
         human_sleep(0.5, 1)
         message_box.click()
         human_sleep(0.5, 1)
 
         try:
-            # JavaScriptで直接テキストを設定（絵文字対応）+ より正確なInputEventをトリガー
-            driver.execute_script("""
-                const element = arguments[0];
-                const text = arguments[1];
-
-                // 要素をフォーカス
-                element.focus();
-
-                // テキストを設定
-                element.textContent = text;
-
-                // InputEventを適切なプロパティで作成（LinkedInのReactが期待する形式）
-                const inputEvent = new InputEvent('input', {
-                    bubbles: true,
-                    cancelable: true,
-                    inputType: 'insertText',
-                    data: text,
-                    composed: true
-                });
-
-                // イベントをディスパッチ
-                element.dispatchEvent(inputEvent);
-
-                // changeイベントも発火
-                const changeEvent = new Event('change', {
-                    bubbles: true,
-                    cancelable: true
-                });
-                element.dispatchEvent(changeEvent);
-
-                // カーソルを最後に移動
-                const range = document.createRange();
-                const sel = window.getSelection();
-                range.selectNodeContents(element);
-                range.collapse(false);
-                sel.removeAllRanges();
-                sel.addRange(range);
-            """, message_box, message)
-            human_sleep(2, 3)
+            message_box.send_keys(message)
+            human_sleep(1, 2)
         except Exception as e:
             return "error", f"メッセージ入力エラー: {e}"
 
