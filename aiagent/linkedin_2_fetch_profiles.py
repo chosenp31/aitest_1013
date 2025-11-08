@@ -253,21 +253,36 @@ def get_connections(driver, start_date):
         }
     });
 
+    // デバッグ: 最初のプロフィールリンクのDOM構造を確認
+    const debugInfo = {};
+    if (uniqueLinks.length > 0) {
+        const firstUrl = uniqueLinks[0];
+        const firstLink = document.querySelector(`a[href="${firstUrl}"], a[href="${firstUrl}/"]`);
+        if (firstLink) {
+            debugInfo.found = true;
+            debugInfo.innerHTML = firstLink.innerHTML.substring(0, 500);
+            debugInfo.textContent = firstLink.textContent.trim().substring(0, 200);
+            debugInfo.hasAriaSpan = !!firstLink.querySelector('span[aria-hidden="true"]');
+            if (firstLink.querySelector('span[aria-hidden="true"]')) {
+                debugInfo.ariaSpanText = firstLink.querySelector('span[aria-hidden="true"]').textContent.trim();
+            }
+        } else {
+            debugInfo.found = false;
+            debugInfo.message = 'querySelector did not find the element';
+        }
+    }
+
     // 各URLに対して名前を取得
     const result = uniqueLinks.map(url => {
-        // デバッグ: リンク要素を取得
         const linkEl = document.querySelector(`a[href="${url}"], a[href="${url}/"]`);
         let name = "名前不明";
 
         if (linkEl) {
-            // リンク要素が見つかった場合、複数の方法で名前を取得
-
-            // 方法1: リンク内のaria-hidden spanから取得（最も確実）
+            // 方法1: リンク内のaria-hidden spanから取得
             const ariaSpan = linkEl.querySelector('span[aria-hidden="true"]');
             if (ariaSpan && ariaSpan.textContent.trim()) {
                 name = ariaSpan.textContent.trim();
             }
-
             // 方法2: リンクのtextContentから取得
             else if (linkEl.textContent && linkEl.textContent.trim()) {
                 name = linkEl.textContent.trim();
@@ -281,15 +296,32 @@ def get_connections(driver, start_date):
         };
     });
 
-    return result;
+    return {result: result, debug: debugInfo};
     """
 
     try:
-        connections = driver.execute_script(script)
+        script_result = driver.execute_script(script)
+        connections = script_result.get('result', [])
+        debug_info = script_result.get('debug', {})
+
         print(f"✅ 検出されたつながり: {len(connections)}件\n")
 
-        # デバッグ: 最初の5件の日付を表示
-        print("🔍 デバッグ: 最初の5件の日付情報")
+        # デバッグ: DOM構造情報を表示
+        if debug_info:
+            print("🔍 デバッグ: 最初のプロフィールリンクのDOM構造")
+            print(f"   リンク要素が見つかった: {debug_info.get('found', False)}")
+            if debug_info.get('found'):
+                print(f"   textContent: '{debug_info.get('textContent', '')}'")
+                print(f"   aria-hidden span あり: {debug_info.get('hasAriaSpan', False)}")
+                if debug_info.get('hasAriaSpan'):
+                    print(f"   aria-hidden span text: '{debug_info.get('ariaSpanText', '')}'")
+                print(f"   innerHTML (最初の500文字): {debug_info.get('innerHTML', '')[:500]}")
+            else:
+                print(f"   エラー: {debug_info.get('message', '')}")
+            print()
+
+        # デバッグ: 最初の5件の名前と日付を表示
+        print("🔍 デバッグ: 最初の5件の情報")
         for i, conn in enumerate(connections[:5]):
             print(f"  {i+1}. {conn['name']}: connected_date='{conn['connected_date']}'")
         print()
