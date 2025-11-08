@@ -228,107 +228,86 @@ def get_connections(driver, start_date):
     # プロフィールリンクと日付を取得
     print("🔍 つながり情報を抽出中...\n")
 
-    # デバッグ: DOM構造を確認
-    debug_script = """
-    const debug = {
-        'data-view-name cards': document.querySelectorAll('[data-view-name="connection-card"]').length,
-        'li.mn-connection-card': document.querySelectorAll('li.mn-connection-card').length,
-        'li elements': document.querySelectorAll('li').length,
-        'profile links total': document.querySelectorAll('a[href*="/in/"]').length,
-        'ul elements': document.querySelectorAll('ul').length,
-        'sample li classes': Array.from(document.querySelectorAll('li')).slice(0, 5).map(el => el.className),
-    };
-    return debug;
-    """
-
-    try:
-        debug_info = driver.execute_script(debug_script)
-        print("🔍 デバッグ: DOM構造情報")
-        for key, value in debug_info.items():
-            print(f"   {key}: {value}")
-        print()
-    except Exception as e:
-        print(f"⚠️ デバッグ情報取得エラー: {e}\n")
-
     script = """
-    // Find all connection cards - try multiple selectors for different LinkedIn layouts
-    let cards = document.querySelectorAll('[data-view-name="connection-card"]');
+    // プロフィールリンクを全て取得（元のアプローチを維持）
+    const profileLinks = Array.from(document.querySelectorAll('a[href*="/in/"]'))
+        .filter(link => link.href.match(/\\/in\\/[^\\/]+\\/?$/));
 
-    console.log('data-view-name cards:', cards.length);
-
-    // If no data-view-name cards, try alternative selectors
-    if (cards.length === 0) {
-        cards = document.querySelectorAll('li.mn-connection-card, li.reusable-search__result-container, ul.mn-connections li');
-        console.log('alternative selector cards:', cards.length);
-    }
-
-    // If still no cards, try to find any li with profile links
-    if (cards.length === 0) {
-        const allLi = document.querySelectorAll('li');
-        cards = Array.from(allLi).filter(li => li.querySelector('a[href*="/in/"]'));
-        console.log('li with profile links:', cards.length);
-    }
-
-    const result = [];
-    const seenUrls = new Set();
-
-    cards.forEach(card => {
-        // Find the profile link within this card
-        const profileLink = card.querySelector('a[href*="/in/"]');
-        if (!profileLink) return;
-
-        // Clean up the URL (remove trailing slash and query params)
-        const url = profileLink.href.replace(/\\/$/, '').split('?')[0];
-
-        // Skip duplicates
-        if (seenUrls.has(url)) return;
-        seenUrls.add(url);
-
-        // Try to find the name - it's usually in specific elements within the card
-        let name = "名前不明";
-
-        // Try various selectors for the name (in order of specificity)
-        const nameSelectors = [
-            '.mn-connection-card__name',           // Common class for connection name
-            '.entity-result__title-text a',        // Search result style
-            'span[aria-hidden="true"]',            // Sometimes name is in aria-hidden span
-            '.artdeco-entity-lockup__title',       // Artdeco component title
-            'a[href*="/in/"] span[aria-hidden="true"]',  // Name span inside profile link
-        ];
-
-        for (const selector of nameSelectors) {
-            const nameEl = card.querySelector(selector);
-            if (nameEl && nameEl.textContent.trim()) {
-                const extractedName = nameEl.textContent.trim();
-                // Validate it's an actual name (not UI text like "View profile")
-                if (extractedName.length > 0 &&
-                    extractedName.length < 100 &&
-                    !extractedName.toLowerCase().includes('view') &&
-                    !extractedName.toLowerCase().includes('message') &&
-                    !extractedName.toLowerCase().includes('connect')) {
-                    name = extractedName;
-                    break;
+    // 日付情報をマップに格納
+    const dateElements = document.querySelectorAll('time');
+    const dateMap = {};
+    dateElements.forEach(el => {
+        const datetime = el.getAttribute('datetime');
+        if (datetime) {
+            const card = el.closest('[data-view-name]') || el.closest('li');
+            if (card) {
+                const link = card.querySelector('a[href*="/in/"]');
+                if (link) {
+                    const url = link.href.replace(/\\/$/, '').split('?')[0];
+                    dateMap[url] = datetime.split('T')[0];
                 }
             }
         }
+    });
 
-        // If still no name found, try getting first text from the profile link itself
-        if (name === "名前不明" && profileLink.textContent.trim()) {
-            const linkText = profileLink.textContent.trim().split('\\n')[0].trim();
-            if (linkText.length > 0 && linkText.length < 100) {
+    // 重複排除しながら名前とURLを抽出
+    const result = [];
+    const seenUrls = new Set();
+
+    profileLinks.forEach(link => {
+        const url = link.href.replace(/\\/$/, '').split('?')[0];
+
+        // 重複チェック
+        if (seenUrls.has(url)) return;
+        seenUrls.add(url);
+
+        // 名前を抽出（複数の方法を試す）
+        let name = "名前不明";
+
+        // 方法1: リンク自体のテキスト
+        if (link.textContent && link.textContent.trim()) {
+            const linkText = link.textContent.trim().split('\\n')[0].trim();
+            if (linkText.length > 0 &&
+                linkText.length < 100 &&
+                !linkText.toLowerCase().includes('view') &&
+                !linkText.toLowerCase().includes('message')) {
                 name = linkText;
             }
         }
 
-        // Get connected date from time element
-        const timeEl = card.querySelector('time');
-        const connected_date = timeEl && timeEl.getAttribute('datetime') ?
-            timeEl.getAttribute('datetime').split('T')[0] : '';
+        // 方法2: リンクの親要素内の特定クラス
+        if (name === "名前不明") {
+            const parent = link.closest('li') || link.closest('[data-view-name]');
+            if (parent) {
+                const nameSelectors = [
+                    '.mn-connection-card__name',
+                    '.mn-connection-card__link',
+                    '.entity-result__title-text',
+                    '.artdeco-entity-lockup__title',
+                ];
+
+                for (const selector of nameSelectors) {
+                    const nameEl = parent.querySelector(selector);
+                    if (nameEl && nameEl.textContent.trim()) {
+                        name = nameEl.textContent.trim();
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 方法3: aria-hidden="true" のspan要素（名前が入っていることが多い）
+        if (name === "名前不明") {
+            const ariaSpan = link.querySelector('span[aria-hidden="true"]');
+            if (ariaSpan && ariaSpan.textContent.trim()) {
+                name = ariaSpan.textContent.trim();
+            }
+        }
 
         result.push({
             profile_url: url,
             name: name,
-            connected_date: connected_date
+            connected_date: dateMap[url] || ""
         });
     });
 
