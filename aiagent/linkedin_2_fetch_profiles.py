@@ -229,35 +229,75 @@ def get_connections(driver, start_date):
     print("🔍 つながり情報を抽出中...\n")
 
     script = """
-    const profileLinks = Array.from(document.querySelectorAll('a[href*="/in/"]'))
-        .filter(link => link.href.match(/\\/in\\/[^\\/]+\\/?$/))
-        .map(link => link.href.replace(/\\/$/, ''));
+    // Find all connection cards - try multiple selectors for different LinkedIn layouts
+    let cards = document.querySelectorAll('[data-view-name="connection-card"]');
 
-    const uniqueLinks = [...new Set(profileLinks)];
+    // If no data-view-name cards, try alternative selectors
+    if (cards.length === 0) {
+        cards = document.querySelectorAll('li.mn-connection-card, li.reusable-search__result-container, ul.mn-connections li');
+    }
 
-    const dateElements = document.querySelectorAll('time');
-    const dateMap = {};
-    dateElements.forEach(el => {
-        const datetime = el.getAttribute('datetime');
-        if (datetime) {
-            const card = el.closest('[data-view-name]');
-            if (card) {
-                const link = card.querySelector('a[href*="/in/"]');
-                if (link) {
-                    const url = link.href.replace(/\\/$/, '');
-                    dateMap[url] = datetime.split('T')[0];
+    const result = [];
+    const seenUrls = new Set();
+
+    cards.forEach(card => {
+        // Find the profile link within this card
+        const profileLink = card.querySelector('a[href*="/in/"]');
+        if (!profileLink) return;
+
+        // Clean up the URL (remove trailing slash and query params)
+        const url = profileLink.href.replace(/\\/$/, '').split('?')[0];
+
+        // Skip duplicates
+        if (seenUrls.has(url)) return;
+        seenUrls.add(url);
+
+        // Try to find the name - it's usually in specific elements within the card
+        let name = "名前不明";
+
+        // Try various selectors for the name (in order of specificity)
+        const nameSelectors = [
+            '.mn-connection-card__name',           // Common class for connection name
+            '.entity-result__title-text a',        // Search result style
+            'span[aria-hidden="true"]',            // Sometimes name is in aria-hidden span
+            '.artdeco-entity-lockup__title',       // Artdeco component title
+            'a[href*="/in/"] span[aria-hidden="true"]',  // Name span inside profile link
+        ];
+
+        for (const selector of nameSelectors) {
+            const nameEl = card.querySelector(selector);
+            if (nameEl && nameEl.textContent.trim()) {
+                const extractedName = nameEl.textContent.trim();
+                // Validate it's an actual name (not UI text like "View profile")
+                if (extractedName.length > 0 &&
+                    extractedName.length < 100 &&
+                    !extractedName.toLowerCase().includes('view') &&
+                    !extractedName.toLowerCase().includes('message') &&
+                    !extractedName.toLowerCase().includes('connect')) {
+                    name = extractedName;
+                    break;
                 }
             }
         }
-    });
 
-    const result = uniqueLinks.map(url => {
-        const name = document.querySelector(`a[href="${url}"], a[href="${url}/"]`)?.textContent.trim() || "名前不明";
-        return {
+        // If still no name found, try getting first text from the profile link itself
+        if (name === "名前不明" && profileLink.textContent.trim()) {
+            const linkText = profileLink.textContent.trim().split('\\n')[0].trim();
+            if (linkText.length > 0 && linkText.length < 100) {
+                name = linkText;
+            }
+        }
+
+        // Get connected date from time element
+        const timeEl = card.querySelector('time');
+        const connected_date = timeEl && timeEl.getAttribute('datetime') ?
+            timeEl.getAttribute('datetime').split('T')[0] : '';
+
+        result.push({
             profile_url: url,
             name: name,
-            connected_date: dateMap[url] || ""
-        };
+            connected_date: connected_date
+        });
     });
 
     return result;
