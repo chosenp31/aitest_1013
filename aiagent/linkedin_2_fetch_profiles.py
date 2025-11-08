@@ -228,13 +228,45 @@ def get_connections(driver, start_date):
     # プロフィールリンクと日付を取得
     print("🔍 つながり情報を抽出中...\n")
 
+    # デバッグ: DOM構造を確認
+    debug_script = """
+    const debug = {
+        'data-view-name cards': document.querySelectorAll('[data-view-name="connection-card"]').length,
+        'li.mn-connection-card': document.querySelectorAll('li.mn-connection-card').length,
+        'li elements': document.querySelectorAll('li').length,
+        'profile links total': document.querySelectorAll('a[href*="/in/"]').length,
+        'ul elements': document.querySelectorAll('ul').length,
+        'sample li classes': Array.from(document.querySelectorAll('li')).slice(0, 5).map(el => el.className),
+    };
+    return debug;
+    """
+
+    try:
+        debug_info = driver.execute_script(debug_script)
+        print("🔍 デバッグ: DOM構造情報")
+        for key, value in debug_info.items():
+            print(f"   {key}: {value}")
+        print()
+    except Exception as e:
+        print(f"⚠️ デバッグ情報取得エラー: {e}\n")
+
     script = """
     // Find all connection cards - try multiple selectors for different LinkedIn layouts
     let cards = document.querySelectorAll('[data-view-name="connection-card"]');
 
+    console.log('data-view-name cards:', cards.length);
+
     // If no data-view-name cards, try alternative selectors
     if (cards.length === 0) {
         cards = document.querySelectorAll('li.mn-connection-card, li.reusable-search__result-container, ul.mn-connections li');
+        console.log('alternative selector cards:', cards.length);
+    }
+
+    // If still no cards, try to find any li with profile links
+    if (cards.length === 0) {
+        const allLi = document.querySelectorAll('li');
+        cards = Array.from(allLi).filter(li => li.querySelector('a[href*="/in/"]'));
+        console.log('li with profile links:', cards.length);
     }
 
     const result = [];
