@@ -398,11 +398,12 @@ def main(account_name, paths, max_messages):
     profiles_master = load_profiles_master(paths['profiles_master_file'])
     print(f"✅ 既存レコード: {len(profiles_master)} 件\n")
 
-    # 送信対象抽出（message_generated=yes かつ message_sent_status≠success）
+    # 送信対象抽出（案A: scoring_decision='send' かつ message_generated='yes' かつ status='pending'/'error'）
     send_targets = []
     for profile_url, profile in profiles_master.items():
-        if (profile.get('message_generated') == 'yes' and
-            profile.get('message_sent_status') != 'success'):
+        if (profile.get('scoring_decision') == 'send' and
+            profile.get('message_generated') == 'yes' and
+            profile.get('message_sent_status') in ['pending', 'error']):
             send_targets.append(profile)
 
     if not send_targets:
