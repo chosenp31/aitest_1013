@@ -364,47 +364,71 @@ def main():
     with col1:
         bulk_filter = st.selectbox(
             "対象を選択",
-            ["全ての送信待ち (pending)", "全てのエラー (error)", "全ての送信成功 (success)"]
+            ["全ての送信待ち (pending)", "全てのエラー (error)", "全ての送信成功 (success)", "全ての判定前（未判定）"]
         )
 
     with col2:
         bulk_new_status = st.selectbox(
             "変更後のステータス",
-            ["pending", "success", "error"]
+            ["pending", "success", "error", "送信対象外 (skip)"]
         )
 
     with col3:
         st.write("")  # スペース
         st.write("")  # スペース
         if st.button("🔄 一括変更", type="secondary"):
-            if bulk_filter == "全ての送信待ち (pending)":
-                target_status = 'pending'
-            elif bulk_filter == "全てのエラー (error)":
-                target_status = 'error'
-            elif bulk_filter == "全ての送信成功 (success)":
-                target_status = 'success'
+            count = 0
 
-            # 対象行を更新
-            mask = df['message_sent_status'] == target_status
-            count = mask.sum()
+            if bulk_filter == "全ての判定前（未判定）":
+                # 判定前の人を対象に
+                mask = (df['scoring_decision'].isna()) | (df['scoring_decision'] == '')
+                count = mask.sum()
 
-            if count > 0:
-                df.loc[mask, 'message_sent_status'] = bulk_new_status
+                if count > 0 and bulk_new_status == "送信対象外 (skip)":
+                    df.loc[mask, 'scoring_decision'] = 'skip'
+                    df.loc[mask, 'exclusion_reason'] = '手動で対象外に設定'
+                    df.loc[mask, 'total_score'] = '-'
 
-                # タイムスタンプ更新
-                if bulk_new_status == 'success':
-                    df.loc[mask, 'message_sent_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    df.loc[mask, 'last_send_error'] = ''
-                elif bulk_new_status == 'pending':
-                    df.loc[mask, 'message_sent_at'] = ''
-                    df.loc[mask, 'last_send_error'] = ''
-
-                # 保存
-                save_profiles_master(df, paths['profiles_master_file'])
-                st.success(f"✅ {count}件のステータスを {bulk_new_status} に変更しました！")
-                st.rerun()
+                    # 保存
+                    save_profiles_master(df, paths['profiles_master_file'])
+                    st.success(f"✅ {count}件を送信対象外に変更しました！")
+                    st.rerun()
+                else:
+                    st.error("判定前の一括変更は「送信対象外 (skip)」のみ選択可能です")
             else:
-                st.info("対象データがありません")
+                # 既存の一括操作
+                if bulk_filter == "全ての送信待ち (pending)":
+                    target_status = 'pending'
+                elif bulk_filter == "全てのエラー (error)":
+                    target_status = 'error'
+                elif bulk_filter == "全ての送信成功 (success)":
+                    target_status = 'success'
+
+                # message_sent_statusの変更のみ許可
+                if bulk_new_status in ["pending", "success", "error"]:
+                    # 対象行を更新
+                    mask = df['message_sent_status'] == target_status
+                    count = mask.sum()
+
+                    if count > 0:
+                        df.loc[mask, 'message_sent_status'] = bulk_new_status
+
+                        # タイムスタンプ更新
+                        if bulk_new_status == 'success':
+                            df.loc[mask, 'message_sent_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                            df.loc[mask, 'last_send_error'] = ''
+                        elif bulk_new_status == 'pending':
+                            df.loc[mask, 'message_sent_at'] = ''
+                            df.loc[mask, 'last_send_error'] = ''
+
+                        # 保存
+                        save_profiles_master(df, paths['profiles_master_file'])
+                        st.success(f"✅ {count}件のステータスを {bulk_new_status} に変更しました！")
+                        st.rerun()
+                    else:
+                        st.info("対象データがありません")
+                else:
+                    st.error("このフィルターでは「送信対象外 (skip)」は選択できません")
 
 if __name__ == "__main__":
     main()
