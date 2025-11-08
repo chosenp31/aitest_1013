@@ -229,9 +229,12 @@ def get_connections(driver, start_date):
     print("🔍 つながり情報を抽出中...\n")
 
     script = """
-    // プロフィールリンクを全て取得（元のアプローチを維持）
+    // プロフィールリンクを全て取得
     const profileLinks = Array.from(document.querySelectorAll('a[href*="/in/"]'))
-        .filter(link => link.href.match(/\\/in\\/[^\\/]+\\/?$/));
+        .filter(link => link.href.match(/\\/in\\/[^\\/]+\\/?$/))
+        .map(link => link.href.replace(/\\/$/, ''));
+
+    const uniqueLinks = [...new Set(profileLinks)];
 
     // 日付情報をマップに格納
     const dateElements = document.querySelectorAll('time');
@@ -239,76 +242,43 @@ def get_connections(driver, start_date):
     dateElements.forEach(el => {
         const datetime = el.getAttribute('datetime');
         if (datetime) {
-            const card = el.closest('[data-view-name]') || el.closest('li');
+            const card = el.closest('[data-view-name]');
             if (card) {
                 const link = card.querySelector('a[href*="/in/"]');
                 if (link) {
-                    const url = link.href.replace(/\\/$/, '').split('?')[0];
+                    const url = link.href.replace(/\\/$/, '');
                     dateMap[url] = datetime.split('T')[0];
                 }
             }
         }
     });
 
-    // 重複排除しながら名前とURLを抽出
-    const result = [];
-    const seenUrls = new Set();
-
-    profileLinks.forEach(link => {
-        const url = link.href.replace(/\\/$/, '').split('?')[0];
-
-        // 重複チェック
-        if (seenUrls.has(url)) return;
-        seenUrls.add(url);
-
-        // 名前を抽出（複数の方法を試す）
+    // 各URLに対して名前を取得
+    const result = uniqueLinks.map(url => {
+        // デバッグ: リンク要素を取得
+        const linkEl = document.querySelector(`a[href="${url}"], a[href="${url}/"]`);
         let name = "名前不明";
 
-        // 方法1: リンク自体のテキスト
-        if (link.textContent && link.textContent.trim()) {
-            const linkText = link.textContent.trim().split('\\n')[0].trim();
-            if (linkText.length > 0 &&
-                linkText.length < 100 &&
-                !linkText.toLowerCase().includes('view') &&
-                !linkText.toLowerCase().includes('message')) {
-                name = linkText;
-            }
-        }
+        if (linkEl) {
+            // リンク要素が見つかった場合、複数の方法で名前を取得
 
-        // 方法2: リンクの親要素内の特定クラス
-        if (name === "名前不明") {
-            const parent = link.closest('li') || link.closest('[data-view-name]');
-            if (parent) {
-                const nameSelectors = [
-                    '.mn-connection-card__name',
-                    '.mn-connection-card__link',
-                    '.entity-result__title-text',
-                    '.artdeco-entity-lockup__title',
-                ];
-
-                for (const selector of nameSelectors) {
-                    const nameEl = parent.querySelector(selector);
-                    if (nameEl && nameEl.textContent.trim()) {
-                        name = nameEl.textContent.trim();
-                        break;
-                    }
-                }
-            }
-        }
-
-        // 方法3: aria-hidden="true" のspan要素（名前が入っていることが多い）
-        if (name === "名前不明") {
-            const ariaSpan = link.querySelector('span[aria-hidden="true"]');
+            // 方法1: リンク内のaria-hidden spanから取得（最も確実）
+            const ariaSpan = linkEl.querySelector('span[aria-hidden="true"]');
             if (ariaSpan && ariaSpan.textContent.trim()) {
                 name = ariaSpan.textContent.trim();
             }
+
+            // 方法2: リンクのtextContentから取得
+            else if (linkEl.textContent && linkEl.textContent.trim()) {
+                name = linkEl.textContent.trim();
+            }
         }
 
-        result.push({
+        return {
             profile_url: url,
             name: name,
             connected_date: dateMap[url] || ""
-        });
+        };
     });
 
     return result;
