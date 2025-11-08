@@ -274,18 +274,27 @@ def get_connections(driver, start_date):
 
     // 各URLに対して名前を取得
     const result = uniqueLinks.map(url => {
-        const linkEl = document.querySelector(`a[href="${url}"], a[href="${url}/"]`);
+        // 同じURLへのリンクが複数ある（写真リンク、名前リンク等）ので、querySelectorAllで全て取得
+        const linkElements = document.querySelectorAll(`a[href="${url}"], a[href="${url}/"]`);
         let name = "名前不明";
 
-        if (linkEl) {
+        // 全てのリンク要素を確認して、名前が入っているものを探す
+        for (const linkEl of linkElements) {
             // 方法1: リンク内のaria-hidden spanから取得
             const ariaSpan = linkEl.querySelector('span[aria-hidden="true"]');
             if (ariaSpan && ariaSpan.textContent.trim()) {
                 name = ariaSpan.textContent.trim();
+                break;
             }
-            // 方法2: リンクのtextContentから取得
-            else if (linkEl.textContent && linkEl.textContent.trim()) {
-                name = linkEl.textContent.trim();
+
+            // 方法2: リンクのtextContentから取得（空でない場合）
+            if (linkEl.textContent && linkEl.textContent.trim()) {
+                const text = linkEl.textContent.trim();
+                // プロフィール写真リンクは除外（textが短すぎるか、特定のパターン）
+                if (text.length > 2 && !text.includes('さんのプロフィール写真')) {
+                    name = text;
+                    break;
+                }
             }
         }
 
