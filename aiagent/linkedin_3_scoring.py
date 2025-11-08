@@ -444,7 +444,32 @@ def validate_and_enforce_exclusion(candidate, scoring_result):
                 "exclusion_reason": "人材関係者のため"
             }
 
-    # 5. 合計スコアの再計算（OpenAIの計算ミスを修正）
+    # 5. KPMG・フューチャー在籍者チェック
+    kpmg_future_keywords = [
+        'kpmg', 'フューチャー', 'future corporation', 'future architect', 'フューチャーアーキテクト'
+    ]
+
+    for keyword in kpmg_future_keywords:
+        if keyword in text_to_check:
+            # KPMGかフューチャーかを判定
+            if 'kpmg' in keyword.lower():
+                exclusion_msg = "KPMG在籍のため"
+            else:
+                exclusion_msg = "フューチャー在籍のため"
+
+            return {
+                "estimated_age": scoring_result.get("estimated_age"),
+                "age_reasoning": scoring_result.get("age_reasoning", ""),
+                "age_score": 0,
+                "it_experience_score": 0,
+                "position_score": 0,
+                "total_score": 0,
+                "decision": "skip",
+                "reason": f"企業「{keyword}」が検出されたため除外",
+                "exclusion_reason": exclusion_msg
+            }
+
+    # 6. 合計スコアの再計算（OpenAIの計算ミスを修正）
     age_score = scoring_result.get("age_score", 0)
     it_experience_score = scoring_result.get("it_experience_score", 0)
     position_score = scoring_result.get("position_score", 0)
