@@ -469,7 +469,22 @@ def validate_and_enforce_exclusion(candidate, scoring_result):
                 "exclusion_reason": exclusion_msg
             }
 
-    # 6. 合計スコアの再計算（OpenAIの計算ミスを修正）
+    # 6. 41歳以上チェック
+    estimated_age = scoring_result.get("estimated_age")
+    if estimated_age and estimated_age >= 41:
+        return {
+            "estimated_age": estimated_age,
+            "age_reasoning": scoring_result.get("age_reasoning", ""),
+            "age_score": 0,
+            "it_experience_score": 0,
+            "position_score": 0,
+            "total_score": 0,
+            "decision": "skip",
+            "reason": f"推定年齢{estimated_age}歳（41歳以上）のため除外",
+            "exclusion_reason": "41歳以上のため"
+        }
+
+    # 7. 合計スコアの再計算（OpenAIの計算ミスを修正）
     age_score = scoring_result.get("age_score", 0)
     it_experience_score = scoring_result.get("it_experience_score", 0)
     position_score = scoring_result.get("position_score", 0)
