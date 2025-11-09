@@ -326,50 +326,122 @@ def get_connections(driver, start_date):
     try:
         script_result = driver.execute_script(script)
         connections = script_result.get('result', [])
-        debug_info = script_result.get('debug', {})
+    except Exception as e:
+        print(f"❌ つながり取得エラー: {e}")
+        print("\n💡 別の方法で再試行します...")
 
-        print(f"✅ 検出されたつながり: {len(connections)}件\n")
+        # 代替方法：より安全なJavaScript
+        alt_script = """
+        // プロフィールリンクを全て取得（より安全な方法）
+        const profileLinks = Array.from(document.querySelectorAll('a[href*="/in/"]'))
+            .filter(link => {
+                const href = link.href;
+                return href.indexOf('/in/') > -1 && !href.match(/\\/in\\/search/);
+            })
+            .map(link => link.href.replace(/\\/$/, ''));
 
-        # デバッグ: DOM構造情報を表示
-        if debug_info:
-            print("🔍 デバッグ: 最初のプロフィールリンクのDOM構造")
-            print(f"   リンク要素が見つかった: {debug_info.get('found', False)}")
-            if debug_info.get('found'):
-                print(f"   textContent: '{debug_info.get('textContent', '')}'")
-                print(f"   aria-hidden span あり: {debug_info.get('hasAriaSpan', False)}")
-                if debug_info.get('hasAriaSpan'):
-                    print(f"   aria-hidden span text: '{debug_info.get('ariaSpanText', '')}'")
-                print(f"   innerHTML (最初の500文字): {debug_info.get('innerHTML', '')[:500]}")
-            else:
-                print(f"   エラー: {debug_info.get('message', '')}")
-            print()
+        const uniqueLinks = [...new Set(profileLinks)];
 
-        # デバッグ: 最初の5件の名前と日付を表示
-        print("🔍 デバッグ: 最初の5件の情報")
-        for i, conn in enumerate(connections[:5]):
-            print(f"  {i+1}. {conn['name']}: connected_date='{conn['connected_date']}'")
+        // 日付情報をマップに格納
+        const dateElements = document.querySelectorAll('time');
+        const dateMap = {};
+        dateElements.forEach(el => {
+            const datetime = el.getAttribute('datetime');
+            if (datetime) {
+                const card = el.closest('[data-view-name]');
+                if (card) {
+                    const link = card.querySelector('a[href*="/in/"]');
+                    if (link) {
+                        const url = link.href.replace(/\\/$/, '');
+                        dateMap[url] = datetime.split('T')[0];
+                    }
+                }
+            }
+        });
+
+        // 各URLに対して名前を取得
+        const result = uniqueLinks.map(url => {
+            const linkElements = document.querySelectorAll(`a[href="${url}"], a[href="${url}/"]`);
+            let name = "名前不明";
+
+            for (const linkEl of linkElements) {
+                const ariaSpan = linkEl.querySelector('span[aria-hidden="true"]');
+                if (ariaSpan && ariaSpan.textContent.trim()) {
+                    name = ariaSpan.textContent.trim();
+                    break;
+                }
+
+                if (!name || name === "名前不明") {
+                    const directText = Array.from(linkEl.childNodes)
+                        .filter(node => node.nodeType === Node.TEXT_NODE)
+                        .map(node => node.textContent.trim())
+                        .filter(text => text.length > 0)
+                        .join(' ');
+                    if (directText && !directText.includes('さんのプロフィール写真')) {
+                        name = directText;
+                        break;
+                    }
+                }
+            }
+
+            return {
+                profile_url: url,
+                name: name,
+                connected_date: dateMap[url] || ""
+            };
+        });
+
+        return {result: result, debug: {}};
+        """
+
+        try:
+            script_result = driver.execute_script(alt_script)
+            connections = script_result.get('result', [])
+        except Exception as e2:
+            print(f"❌ 代替方法でもエラーが発生: {e2}")
+            connections = []
+            script_result = {'result': [], 'debug': {}}
+
+    debug_info = script_result.get('debug', {})
+
+    print(f"✅ 検出されたつながり: {len(connections)}件\n")
+
+    # デバッグ: DOM構造情報を表示
+    if debug_info:
+        print("🔍 デバッグ: 最初のプロフィールリンクのDOM構造")
+        print(f"   リンク要素が見つかった: {debug_info.get('found', False)}")
+        if debug_info.get('found'):
+            print(f"   textContent: '{debug_info.get('textContent', '')}'")
+            print(f"   aria-hidden span あり: {debug_info.get('hasAriaSpan', False)}")
+            if debug_info.get('hasAriaSpan'):
+                print(f"   aria-hidden span text: '{debug_info.get('ariaSpanText', '')}'")
+            print(f"   innerHTML (最初の500文字): {debug_info.get('innerHTML', '')[:500]}")
+        else:
+            print(f"   エラー: {debug_info.get('message', '')}")
         print()
 
-        # 日付フィルタリング
-        filtered = []
-        date_missing_count = 0
-        for conn in connections:
-            # 日付が空の場合は、すべて対象に含める
-            if not conn['connected_date']:
-                filtered.append(conn)
-                date_missing_count += 1
-            elif conn['connected_date'] >= start_date:
-                filtered.append(conn)
+    # デバッグ: 最初の5件の名前と日付を表示
+    print("🔍 デバッグ: 最初の5件の情報")
+    for i, conn in enumerate(connections[:5]):
+        print(f"  {i+1}. {conn['name']}: connected_date='{conn['connected_date']}'")
+    print()
 
-        if date_missing_count > 0:
-            print(f"⚠️ 日付情報なし: {date_missing_count}件（全て対象に含めました）")
+    # 日付フィルタリング
+    filtered = []
+    date_missing_count = 0
+    for conn in connections:
+        # 日付が空の場合は、すべて対象に含める
+        if not conn['connected_date']:
+            filtered.append(conn)
+            date_missing_count += 1
+        elif conn['connected_date'] >= start_date:
+            filtered.append(conn)
 
-        print(f"✅ {start_date}以降のつながり: {len(filtered)}件\n")
-        return filtered
+    if date_missing_count > 0:
+        print(f"⚠️ 日付情報なし: {date_missing_count}件（全て対象に含めました）")
 
-    except Exception as e:
-        print(f"❌ つながり取得エラー: {e}\n")
-        return []
+    print(f"✅ {start_date}以降のつながり: {len(filtered)}件\n")
+    return filtered
 
 # ==============================
 # Step 2: プロフィール詳細取得
