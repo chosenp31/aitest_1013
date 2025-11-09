@@ -287,12 +287,27 @@ def get_connections(driver, start_date):
                 break;
             }
 
-            // 方法2: リンクのtextContentから取得（空でない場合）
-            if (linkEl.textContent && linkEl.textContent.trim()) {
+            // 方法2: リンク直下のテキストノードのみを取得
+            if (!name) {
+                const directText = Array.from(linkEl.childNodes)
+                    .filter(node => node.nodeType === Node.TEXT_NODE)
+                    .map(node => node.textContent.trim())
+                    .filter(text => text.length > 0)
+                    .join(' ');
+                if (directText && !directText.includes('さんのプロフィール写真')) {
+                    name = directText;
+                    break;
+                }
+            }
+
+            // 方法3: textContentから最初の行のみを取得（最終手段）
+            if (!name && linkEl.textContent && linkEl.textContent.trim()) {
                 const text = linkEl.textContent.trim();
-                // プロフィール写真リンクは除外（textが短すぎるか、特定のパターン）
-                if (text.length > 2 && !text.includes('さんのプロフィール写真')) {
-                    name = text;
+                // 改行で区切って最初の行のみ（名前の部分）
+                const firstLine = text.split('
+')[0].trim();
+                if (firstLine.length > 2 && firstLine.length <= 50 && !firstLine.includes('さんのプロフィール写真')) {
+                    name = firstLine;
                     break;
                 }
             }
