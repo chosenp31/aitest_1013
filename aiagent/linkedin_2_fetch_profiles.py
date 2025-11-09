@@ -272,29 +272,42 @@ def get_connections(driver, start_date):
         }
     }
 
-    // 各URLに対して名前を取得（シンプル版）
+    // 各URLに対して名前を取得
     const result = uniqueLinks.map(url => {
-        const linkElements = document.querySelectorAll('a[href="' + url + '"], a[href="' + url + '/"]');
+        // 同じURLへのリンクが複数ある（写真リンク、名前リンク等）ので、querySelectorAllで全て取得
+        const linkElements = document.querySelectorAll(`a[href="${url}"], a[href="${url}/"]`);
         let name = "名前不明";
 
-        for (let i = 0; i < linkElements.length; i++) {
-            const linkEl = linkElements[i];
-            
-            // 方法1: aria-hidden spanから取得
+        // 全てのリンク要素を確認して、名前が入っているものを探す
+        for (const linkEl of linkElements) {
+            // 方法1: リンク内のaria-hidden spanから取得
             const ariaSpan = linkEl.querySelector('span[aria-hidden="true"]');
-            if (ariaSpan) {
-                const spanText = ariaSpan.textContent.trim();
-                if (spanText && spanText.length > 0) {
-                    name = spanText;
+            if (ariaSpan && ariaSpan.textContent.trim()) {
+                name = ariaSpan.textContent.trim();
+                break;
+            }
+
+            // 方法2: リンク直下のテキストノードのみを取得
+            if (!name) {
+                const directText = Array.from(linkEl.childNodes)
+                    .filter(node => node.nodeType === Node.TEXT_NODE)
+                    .map(node => node.textContent.trim())
+                    .filter(text => text.length > 0)
+                    .join(' ');
+                if (directText && !directText.includes('さんのプロフィール写真')) {
+                    name = directText;
                     break;
                 }
             }
 
-            // 方法2: textContentから取得
-            const linkText = linkEl.textContent.trim();
-            if (linkText && linkText.length > 2 && linkText.length <= 50) {
-                if (linkText.indexOf('さんのプロフィール写真') === -1) {
-                    name = linkText;
+            // 方法3: textContentから最初の行のみを取得（最終手段）
+            if (!name && linkEl.textContent && linkEl.textContent.trim()) {
+                const text = linkEl.textContent.trim();
+                // 改行で区切って最初の行のみ（名前の部分）
+                const firstLine = text.split('
+')[0].trim();
+                if (firstLine.length > 2 && firstLine.length <= 50 && !firstLine.includes('さんのプロフィール写真')) {
+                    name = firstLine;
                     break;
                 }
             }
@@ -319,15 +332,16 @@ def get_connections(driver, start_date):
 
         # デバッグ: DOM構造情報を表示
         if debug_info:
-            print("🔍 デバッグ: DOM構造の詳細分析")
-            print(f"   同じURLへのリンク数: {debug_info.get('totalLinks', 0)}")
-            for i, detail in enumerate(debug_info.get('linkDetails', []), 1):
-                print(f"
-   === リンク{i} ===")
-                print(f"   textContent: '{detail.get('textContent', '')}'")
-                print(f"   子要素数: {detail.get('childCount', 0)}")
-                for j, child in enumerate(detail.get('childrenInfo', []), 1):
-                    print(f"      子{j}: <{child.get('tagName')}> aria-hidden={child.get('ariaHidden')} text='{child.get('textContent', '')}'")
+            print("🔍 デバッグ: 最初のプロフィールリンクのDOM構造")
+            print(f"   リンク要素が見つかった: {debug_info.get('found', False)}")
+            if debug_info.get('found'):
+                print(f"   textContent: '{debug_info.get('textContent', '')}'")
+                print(f"   aria-hidden span あり: {debug_info.get('hasAriaSpan', False)}")
+                if debug_info.get('hasAriaSpan'):
+                    print(f"   aria-hidden span text: '{debug_info.get('ariaSpanText', '')}'")
+                print(f"   innerHTML (最初の500文字): {debug_info.get('innerHTML', '')[:500]}")
+            else:
+                print(f"   エラー: {debug_info.get('message', '')}")
             print()
 
         # デバッグ: 最初の5件の名前と日付を表示
