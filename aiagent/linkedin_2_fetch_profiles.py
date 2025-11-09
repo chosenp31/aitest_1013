@@ -319,16 +319,15 @@ def get_connections(driver, start_date):
 
         # デバッグ: DOM構造情報を表示
         if debug_info:
-            print("🔍 デバッグ: 最初のプロフィールリンクのDOM構造")
-            print(f"   リンク要素が見つかった: {debug_info.get('found', False)}")
-            if debug_info.get('found'):
-                print(f"   textContent: '{debug_info.get('textContent', '')}'")
-                print(f"   aria-hidden span あり: {debug_info.get('hasAriaSpan', False)}")
-                if debug_info.get('hasAriaSpan'):
-                    print(f"   aria-hidden span text: '{debug_info.get('ariaSpanText', '')}'")
-                print(f"   innerHTML (最初の500文字): {debug_info.get('innerHTML', '')[:500]}")
-            else:
-                print(f"   エラー: {debug_info.get('message', '')}")
+            print("🔍 デバッグ: DOM構造の詳細分析")
+            print(f"   同じURLへのリンク数: {debug_info.get('totalLinks', 0)}")
+            for i, detail in enumerate(debug_info.get('linkDetails', []), 1):
+                print(f"
+   === リンク{i} ===")
+                print(f"   textContent: '{detail.get('textContent', '')}'")
+                print(f"   子要素数: {detail.get('childCount', 0)}")
+                for j, child in enumerate(detail.get('childrenInfo', []), 1):
+                    print(f"      子{j}: <{child.get('tagName')}> aria-hidden={child.get('ariaHidden')} text='{child.get('textContent', '')}'")
             print()
 
         # デバッグ: 最初の5件の名前と日付を表示
