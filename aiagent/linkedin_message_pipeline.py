@@ -286,7 +286,74 @@ def get_connections(driver, start_date):
     return Array.from(connectionsMap.values());
     """
 
-    connections = driver.execute_script(script)
+    try:
+        connections = driver.execute_script(script)
+    except Exception as e:
+        print(f"❌ つながり取得エラー: {e}")
+        print("\n💡 別の方法で再試行します...")
+
+        # 代替方法：より安全なJavaScript
+        alt_script = """
+        const profileLinks = Array.from(document.querySelectorAll('a[href*="/in/"]'))
+            .filter(a => {
+                const href = a.getAttribute('href') || '';
+                return href.indexOf('/in/') > -1 && !href.match(/\\/in\\/search/);
+            });
+
+        const connectionsMap = new Map();
+
+        for (const link of profileLinks) {
+            const profileUrl = link.href;
+            const name = link.textContent.trim();
+
+            if (!name) continue;
+
+            let card = link;
+            let dateText = '';
+
+            for (let level = 0; level < 15; level++) {
+                card = card.parentElement;
+                if (!card) break;
+
+                const cardText = card.textContent || '';
+
+                if (cardText.includes('につながりました')) {
+                    const yearMatch = cardText.match(/(\\d{4})年/);
+                    const monthMatch = cardText.match(/(\\d{1,2})月/);
+                    const dayMatch = cardText.match(/(\\d{1,2})日につながりました/);
+
+                    if (yearMatch && monthMatch && dayMatch) {
+                        const year = yearMatch[1];
+                        const month = monthMatch[1];
+                        const day = dayMatch[1];
+                        dateText = year + '年' + month + '月' + day + '日につながりました';
+                    }
+                    break;
+                }
+            }
+
+            if (dateText) {
+                const existing = connectionsMap.get(profileUrl);
+                if (!existing || name.length < existing.name.length) {
+                    connectionsMap.set(profileUrl, {
+                        name: name,
+                        profileUrl: profileUrl,
+                        dateText: dateText
+                    });
+                }
+            }
+        }
+
+        return Array.from(connectionsMap.values());
+        """
+
+        try:
+            connections = driver.execute_script(alt_script)
+        except Exception as e2:
+            print(f"❌ 代替方法でもエラーが発生: {e2}")
+            connections = []
+
+    print(f"✅ 全つながり数: {len(connections)} 件\n")
 
     # 日付でフィルタリング
     from datetime import datetime
