@@ -272,41 +272,29 @@ def get_connections(driver, start_date):
         }
     }
 
-    // 各URLに対して名前を取得
+    // 各URLに対して名前を取得（シンプル版）
     const result = uniqueLinks.map(url => {
-        // 同じURLへのリンクが複数ある（写真リンク、名前リンク等）ので、querySelectorAllで全て取得
-        const linkElements = document.querySelectorAll(`a[href="${url}"], a[href="${url}/"]`);
+        const linkElements = document.querySelectorAll('a[href="' + url + '"], a[href="' + url + '/"]');
         let name = "名前不明";
 
-        // 全てのリンク要素を確認して、名前が入っているものを探す
-        for (const linkEl of linkElements) {
-            // 方法1: リンク内のaria-hidden spanから取得
+        for (let i = 0; i < linkElements.length; i++) {
+            const linkEl = linkElements[i];
+            
+            // 方法1: aria-hidden spanから取得
             const ariaSpan = linkEl.querySelector('span[aria-hidden="true"]');
-            if (ariaSpan && ariaSpan.textContent.trim()) {
-                name = ariaSpan.textContent.trim();
-                break;
-            }
-
-            // 方法2: リンク直下のテキストノードのみを取得
-            if (!name) {
-                const directText = Array.from(linkEl.childNodes)
-                    .filter(node => node.nodeType === Node.TEXT_NODE)
-                    .map(node => node.textContent.trim())
-                    .filter(text => text.length > 0)
-                    .join(' ');
-                if (directText && !directText.includes('さんのプロフィール写真')) {
-                    name = directText;
+            if (ariaSpan) {
+                const spanText = ariaSpan.textContent.trim();
+                if (spanText && spanText.length > 0) {
+                    name = spanText;
                     break;
                 }
             }
 
-            // 方法3: textContentから最初の行のみを取得（最終手段）
-            if (!name && linkEl.textContent && linkEl.textContent.trim()) {
-                const text = linkEl.textContent.trim();
-                // 改行で区切って最初の行のみ（名前の部分）
-                const firstLine = text.split('\n')[0].trim();
-                if (firstLine.length > 2 && firstLine.length <= 50 && !firstLine.includes('さんのプロフィール写真')) {
-                    name = firstLine;
+            // 方法2: textContentから取得
+            const linkText = linkEl.textContent.trim();
+            if (linkText && linkText.length > 2 && linkText.length <= 50) {
+                if (linkText.indexOf('さんのプロフィール写真') === -1) {
+                    name = linkText;
                     break;
                 }
             }
