@@ -286,30 +286,33 @@ def get_connections(driver, start_date):
         }
     }
 
-    // 各URLに対して名前を取得（シンプル版）
+    // 各URLに対して名前を取得（h3タグから名前のみ取得）
     const result = uniqueLinks.map(url => {
-        const linkElements = document.querySelectorAll('a[href="' + url + '"], a[href="' + url + '/"]');
         let name = "名前不明";
 
-        for (let i = 0; i < linkElements.length; i++) {
-            const linkEl = linkElements[i];
-            
-            // 方法1: aria-hidden spanから取得
-            const ariaSpan = linkEl.querySelector('span[aria-hidden="true"]');
-            if (ariaSpan) {
-                const spanText = ariaSpan.textContent.trim();
-                if (spanText && spanText.length > 0) {
-                    name = spanText;
+        // URLに一致するすべてのリンクを取得
+        const allLinks = document.querySelectorAll('a[href*="/in/"]');
+
+        for (let i = 0; i < allLinks.length; i++) {
+            const link = allLinks[i];
+            const href = link.href.replace(/\/$/, '').split('?')[0];
+
+            if (href === url || href + '/' === url) {
+                // 方法1: h3タグから取得（最優先・名前のみが含まれる）
+                const h3 = link.querySelector('h3');
+                if (h3) {
+                    name = h3.textContent.trim();
                     break;
                 }
-            }
 
-            // 方法2: textContentから取得
-            const linkText = linkEl.textContent.trim();
-            if (linkText && linkText.length > 2 && linkText.length <= 50) {
-                if (linkText.indexOf('さんのプロフィール写真') === -1) {
-                    name = linkText;
-                    break;
+                // 方法2: aria-hidden spanから取得（フォールバック）
+                const ariaSpan = link.querySelector('span[aria-hidden="true"]');
+                if (ariaSpan) {
+                    const spanText = ariaSpan.textContent.trim();
+                    if (spanText && spanText.length >= 2 && spanText.length <= 30) {
+                        name = spanText;
+                        break;
+                    }
                 }
             }
         }
