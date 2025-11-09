@@ -304,8 +304,7 @@ def get_connections(driver, start_date):
             if (!name && linkEl.textContent && linkEl.textContent.trim()) {
                 const text = linkEl.textContent.trim();
                 // 改行で区切って最初の行のみ（名前の部分）
-                const firstLine = text.split('
-')[0].trim();
+                const firstLine = text.split('\n')[0].trim();
                 if (firstLine.length > 2 && firstLine.length <= 50 && !firstLine.includes('さんのプロフィール写真')) {
                     name = firstLine;
                     break;
