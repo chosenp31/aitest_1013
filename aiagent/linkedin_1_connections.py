@@ -185,6 +185,7 @@ def send_connections_on_page(driver, log_file, current_total=0, max_requests=50)
     time.sleep(3)  # 最終的な読み込みを待つ
 
     # つながり申請リンクを検出（LinkedInが<a>タグで実装している）
+    # 既申請（承認待ち）の候補者は除外
     script = """
     const candidates = [];
 
@@ -207,10 +208,44 @@ def send_connections_on_page(driver, log_file, current_total=0, max_requests=50)
                 name !== 'つながり' &&
                 name !== 'ホーム' &&
                 name !== 'メッセージ') {
-                candidates.push({
-                    name: name,
-                    buttonText: 'つながる'
-                });
+
+                // 既申請（承認待ち）かチェック
+                // リンクの親要素を遡って候補者カードを探す
+                let card = link.closest('li');
+                if (!card) {
+                    // liが見つからない場合、親要素を10階層まで遡る
+                    let parent = link.parentElement;
+                    for (let i = 0; i < 10 && parent; i++) {
+                        if (parent.tagName === 'LI') {
+                            card = parent;
+                            break;
+                        }
+                        parent = parent.parentElement;
+                    }
+                }
+
+                // カード内に「承認待ち」ボタンがあるかチェック
+                let isPending = false;
+                if (card) {
+                    const buttons = card.querySelectorAll('button');
+                    for (const btn of buttons) {
+                        const btnText = btn.textContent.trim();
+                        const btnAria = btn.getAttribute('aria-label') || '';
+                        if (btnText.includes('承認待ち') || btnText.includes('Pending') ||
+                            btnAria.includes('承認待ち') || btnAria.includes('Pending')) {
+                            isPending = true;
+                            break;
+                        }
+                    }
+                }
+
+                // 承認待ちでなければ候補者に追加
+                if (!isPending) {
+                    candidates.push({
+                        name: name,
+                        buttonText: 'つながる'
+                    });
+                }
             }
         }
     });
@@ -274,29 +309,55 @@ def send_connections_on_page(driver, log_file, current_total=0, max_requests=50)
                 result = driver.execute_script(click_script)
 
                 if result['success']:
-                    time.sleep(2)
+                    time.sleep(3)  # モーダルの完全な読み込みを待つ
 
                     # モーダルが出た場合は「挨拶なしで送信」をクリック
+                    # 優先順位順に複数の方法で検索
                     modal_clicked = driver.execute_script("""
-                        const buttons = document.querySelectorAll('button');
-                        for (const btn of buttons) {
-                            const text = btn.textContent.trim();
-                            const ariaLabel = btn.getAttribute('aria-label') || '';
+                        // 方法1: data-control-name 属性で検索（最も信頼性が高い）
+                        let sendButton = document.querySelector('button[data-control-name="send_without_note"]');
 
-                            // 「挨拶なしで送信」「Send without a note」に対応
-                            if (text.includes('挨拶なしで送信') ||
-                                text.includes('Send without a note') ||
-                                ariaLabel.includes('挨拶なしで送信') ||
-                                ariaLabel.includes('Send without a note')) {
-                                btn.click();
-                                return true;
+                        // 方法2: aria-label で検索
+                        if (!sendButton) {
+                            const buttons = document.querySelectorAll('button');
+                            for (const btn of buttons) {
+                                const ariaLabel = btn.getAttribute('aria-label') || '';
+                                if (ariaLabel.includes('Send without') || ariaLabel.includes('挨拶なしで')) {
+                                    sendButton = btn;
+                                    break;
+                                }
                             }
+                        }
+
+                        // 方法3: モーダル内のプライマリボタン
+                        if (!sendButton) {
+                            const modal = document.querySelector('div[role="dialog"]');
+                            if (modal) {
+                                sendButton = modal.querySelector('button.artdeco-button--primary:last-child');
+                            }
+                        }
+
+                        // 方法4: テキストで検索（フォールバック）
+                        if (!sendButton) {
+                            const buttons = document.querySelectorAll('button');
+                            for (const btn of buttons) {
+                                const text = btn.textContent.trim();
+                                if (text.includes('挨拶なしで送信') || text.includes('Send without')) {
+                                    sendButton = btn;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (sendButton) {
+                            sendButton.click();
+                            return true;
                         }
                         return false;
                     """)
 
                     if modal_clicked:
-                        time.sleep(1)
+                        time.sleep(2)  # 送信完了を待つ
 
                     print(f"   ✅ {name} - つながり申請を送信")
                     success_count += 1
