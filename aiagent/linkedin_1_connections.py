@@ -276,18 +276,18 @@ def send_connections_on_page(driver, log_file, current_total=0, max_requests=50)
                 if result['success']:
                     time.sleep(2)
 
-                    # モーダルが出た場合は「つながりを申請」または「送信」をクリック
+                    # モーダルが出た場合は「挨拶なしで送信」をクリック
                     modal_clicked = driver.execute_script("""
                         const buttons = document.querySelectorAll('button');
                         for (const btn of buttons) {
                             const text = btn.textContent.trim();
                             const ariaLabel = btn.getAttribute('aria-label') || '';
 
-                            // 「つながりを申請」「送信」「Send」などに対応
-                            if (text.includes('つながりを申請') || text.includes('送信') ||
-                                text.includes('Send') || text.toLowerCase().includes('connect') ||
-                                ariaLabel.includes('つながりを申請') || ariaLabel.includes('送信') ||
-                                ariaLabel.includes('Send')) {
+                            // 「挨拶なしで送信」「Send without a note」に対応
+                            if (text.includes('挨拶なしで送信') ||
+                                text.includes('Send without a note') ||
+                                ariaLabel.includes('挨拶なしで送信') ||
+                                ariaLabel.includes('Send without a note')) {
                                 btn.click();
                                 return true;
                             }
