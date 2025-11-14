@@ -148,25 +148,41 @@ def log_request(name, result, log_file, error=""):
 def send_connections_on_page(driver, log_file, current_total=0, max_requests=50):
     """現在の検索結果ページ上で全ての候補者につながり申請"""
 
-    # ページを下までスクロール（改善版：より確実に全候補者を読み込む）
+    # ページを下までスクロール（改善版：#workspaceコンテナを使用）
     print("   📜 ページをスクロール中...")
-    last_height = driver.execute_script("return document.body.scrollHeight")
 
-    for i in range(10):  # 最大10回スクロール
-        # JavaScriptで段階的にスクロール
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(2)  # 動的コンテンツの読み込みを待つ
+    # 方法1: #workspaceコンテナをスクロール
+    try:
+        container = driver.find_element(By.ID, "workspace")
+        last_height = driver.execute_script("return arguments[0].scrollHeight", container)
 
-        # 新しい高さを取得
-        new_height = driver.execute_script("return document.body.scrollHeight")
+        for i in range(10):  # 最大10回スクロール
+            # コンテナ内をスクロール
+            driver.execute_script("arguments[0].scrollTo(0, arguments[0].scrollHeight);", container)
+            time.sleep(2)
 
-        # ページの高さが変わらなくなったら終了
-        if new_height == last_height:
-            print(f"   ✓ スクロール完了（{i+1}回目で到達）")
-            break
-        last_height = new_height
+            # 新しい高さを取得
+            new_height = driver.execute_script("return arguments[0].scrollHeight", container)
 
-    time.sleep(2)  # 最終的な読み込みを待つ
+            # ページの高さが変わらなくなったら終了
+            if new_height == last_height:
+                print(f"   ✓ スクロール完了（{i+1}回目で到達）")
+                break
+            last_height = new_height
+
+    except Exception as e:
+        # フォールバック: キーボードスクロール
+        print(f"   ⚠️ #workspace が見つかりません。キーボードスクロールを使用...")
+        try:
+            body = driver.find_element(By.TAG_NAME, "body")
+            for i in range(10):
+                body.send_keys(Keys.PAGE_DOWN)
+                time.sleep(2)
+            print(f"   ✓ スクロール完了（キーボード操作）")
+        except Exception as e2:
+            print(f"   ⚠️ スクロールエラー: {e2}")
+
+    time.sleep(3)  # 最終的な読み込みを待つ
 
     # つながり申請ボタンを検出（「つながり申請」「つながる」「Connect」全対応）
     script = """
