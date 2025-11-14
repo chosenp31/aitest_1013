@@ -276,14 +276,18 @@ def send_connections_on_page(driver, log_file, current_total=0, max_requests=50)
                 if result['success']:
                     time.sleep(2)
 
-                    # モーダルが出た場合は「送信」をJavaScriptでクリック
-                    send_clicked = driver.execute_script("""
+                    # モーダルが出た場合は「つながりを申請」または「送信」をクリック
+                    modal_clicked = driver.execute_script("""
                         const buttons = document.querySelectorAll('button');
                         for (const btn of buttons) {
                             const text = btn.textContent.trim();
                             const ariaLabel = btn.getAttribute('aria-label') || '';
-                            if (text.includes('送信') || text.includes('Send') ||
-                                ariaLabel.includes('送信') || ariaLabel.includes('Send')) {
+
+                            // 「つながりを申請」「送信」「Send」などに対応
+                            if (text.includes('つながりを申請') || text.includes('送信') ||
+                                text.includes('Send') || text.toLowerCase().includes('connect') ||
+                                ariaLabel.includes('つながりを申請') || ariaLabel.includes('送信') ||
+                                ariaLabel.includes('Send')) {
                                 btn.click();
                                 return true;
                             }
@@ -291,7 +295,7 @@ def send_connections_on_page(driver, log_file, current_total=0, max_requests=50)
                         return false;
                     """)
 
-                    if send_clicked:
+                    if modal_clicked:
                         time.sleep(1)
 
                     print(f"   ✅ {name} - つながり申請を送信")
