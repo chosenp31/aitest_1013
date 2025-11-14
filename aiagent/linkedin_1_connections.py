@@ -184,46 +184,33 @@ def send_connections_on_page(driver, log_file, current_total=0, max_requests=50)
 
     time.sleep(3)  # 最終的な読み込みを待つ
 
-    # つながり申請ボタンを検出（「つながり申請」「つながる」「Connect」全対応）
+    # つながり申請リンクを検出（LinkedInが<a>タグで実装している）
     script = """
-    const allButtons = document.querySelectorAll('button');
     const candidates = [];
 
-    allButtons.forEach((btn) => {
-        const text = btn.textContent.trim();
-        const textLower = text.toLowerCase();
+    // <a>タグで aria-label に「つながりを申請」を含むものを検索
+    const connectLinks = document.querySelectorAll('a[aria-label*="つながりを申請"]');
 
-        // 「つながり申請」「つながる」「Connect」など全パターンに対応
-        if ((text.includes('つながり') || text.includes('つながる') || textLower.includes('connect')) &&
-            !btn.closest('header')) {
+    connectLinks.forEach((link) => {
+        const ariaLabel = link.getAttribute('aria-label') || '';
 
-            // ボタンの親要素を遡って候補者カードを特定
-            let card = btn.parentElement;
-            for (let i = 0; i < 8; i++) {
-                if (card && card.innerText && card.innerText.includes('•')) {
-                    break;
-                }
-                if (card) {
-                    card = card.parentElement;
-                }
-            }
+        // aria-labelから候補者名を抽出
+        // 例: "奈良 明久さんにつながりを申請する" → "奈良 明久"
+        const match = ariaLabel.match(/(.+?)さんにつながりを申請/);
 
-            if (card && card.innerText) {
-                const lines = card.innerText.split('\\n');
-                if (lines[0]) {
-                    let name = lines[0].split('•')[0].trim();
+        if (match && match[1]) {
+            const name = match[1].trim();
 
-                    if (name && name.length >= 2 &&
-                        name !== 'つながる' &&
-                        name !== 'つながり' &&
-                        name !== 'ホーム' &&
-                        name !== 'メッセージ') {
-                        candidates.push({
-                            name: name,
-                            buttonText: text
-                        });
-                    }
-                }
+            // 有効な名前かチェック
+            if (name && name.length >= 2 &&
+                name !== 'つながる' &&
+                name !== 'つながり' &&
+                name !== 'ホーム' &&
+                name !== 'メッセージ') {
+                candidates.push({
+                    name: name,
+                    buttonText: 'つながる'
+                });
             }
         }
     });
@@ -250,50 +237,35 @@ def send_connections_on_page(driver, log_file, current_total=0, max_requests=50)
 
             name = candidate['name']
 
-            # ボタンをクリック
+            # リンクをクリック
             try:
-                # JavaScriptで直接クリック（名前ベース検索）
+                # JavaScriptで直接クリック（aria-labelで検索）
                 safe_name = name.replace("'", "\\'").replace('"', '\\"')
 
                 click_script = f"""
-                const allButtons = document.querySelectorAll('button');
-                let targetButton = null;
+                // <a>タグで aria-label に候補者名を含むものを検索
+                const connectLinks = document.querySelectorAll('a[aria-label*="つながりを申請"]');
+                let targetLink = null;
 
-                for (const btn of allButtons) {{
-                    const text = btn.textContent.trim();
-                    const textLower = text.toLowerCase();
+                for (const link of connectLinks) {{
+                    const ariaLabel = link.getAttribute('aria-label') || '';
 
-                    // 「つながり申請」「つながる」「Connect」など全パターンに対応
-                    if ((text.includes('つながり') || text.includes('つながる') || textLower.includes('connect')) &&
-                        !btn.closest('header')) {{
+                    // aria-labelから候補者名を抽出
+                    const match = ariaLabel.match(/(.+?)さんにつながりを申請/);
 
-                        let card = btn.parentElement;
-                        for (let i = 0; i < 8; i++) {{
-                            if (card && card.innerText && card.innerText.includes('•')) {{
-                                break;
-                            }}
-                            if (card) {{
-                                card = card.parentElement;
-                            }}
-                        }}
+                    if (match && match[1]) {{
+                        const candidateName = match[1].trim();
 
-                        if (card && card.innerText) {{
-                            const lines = card.innerText.split('\\n');
-                            if (lines[0]) {{
-                                let cardName = lines[0].split('•')[0].trim();
-
-                                if (cardName === '{safe_name}') {{
-                                    targetButton = btn;
-                                    break;
-                                }}
-                            }}
+                        if (candidateName === '{safe_name}') {{
+                            targetLink = link;
+                            break;
                         }}
                     }}
                 }}
 
-                if (targetButton) {{
-                    targetButton.scrollIntoView({{ block: 'center', behavior: 'instant' }});
-                    targetButton.click();
+                if (targetLink) {{
+                    targetLink.scrollIntoView({{ block: 'center', behavior: 'instant' }});
+                    targetLink.click();
                     return {{ success: true }};
                 }}
                 return {{ success: false }};
