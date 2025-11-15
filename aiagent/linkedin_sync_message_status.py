@@ -453,7 +453,7 @@ def main(account_name, paths, scroll_count):
 
         # 照合結果
         updated_list = []
-        not_found_list = []
+        new_added_list = []
         duplicate_list = []
 
         for message_name in message_names:
@@ -469,11 +469,31 @@ def main(account_name, paths, scroll_count):
                     # 複数件: 同姓同名エラー
                     duplicate_list.append(message_name)
             else:
-                # profiles_master.csvに存在しない
-                not_found_list.append(message_name)
+                # profiles_master.csvに存在しない → 新規登録
+                import uuid
+                temp_key = f"message_only_{uuid.uuid4()}"
+
+                new_profile = {
+                    "profile_url": "",  # 空欄
+                    "name": message_name,
+                    "connected_date": "",
+                    "profile_fetched": "no",
+                    "profile_fetched_at": "",
+                    "total_score": "",
+                    "scoring_decision": "",
+                    "exclusion_reason": "",
+                    "message_generated": "no",
+                    "message_generated_at": "",
+                    "message_sent_status": "送信済",
+                    "message_sent_at": "",
+                    "last_send_error": ""
+                }
+
+                profiles_master[temp_key] = new_profile
+                new_added_list.append(message_name)
 
         # profiles_master.csv 保存
-        if updated_list:
+        if updated_list or new_added_list:
             save_profiles_master(profiles_master, paths['profiles_master_file'])
             print(f"💾 profiles_master.csv 更新完了\n")
 
@@ -481,25 +501,25 @@ def main(account_name, paths, scroll_count):
         print(f"{'='*70}")
         print(f"📊 処理結果サマリー")
         print(f"{'='*70}")
-        print(f"✅ 更新: {len(updated_list)} 件")
-        print(f"⚠️ profiles_master.csvに存在しない: {len(not_found_list)} 件")
+        print(f"✅ 既存更新: {len(updated_list)} 件")
+        print(f"🆕 新規登録: {len(new_added_list)} 件")
         print(f"❌ 同姓同名エラー: {len(duplicate_list)} 件")
         print(f"{'='*70}\n")
 
         # 詳細リスト表示
         if updated_list:
             print(f"{'='*70}")
-            print(f"✅ 更新された名前リスト ({len(updated_list)}件)")
+            print(f"✅ 既存更新された名前リスト ({len(updated_list)}件)")
             print(f"{'='*70}")
             for i, name in enumerate(updated_list, 1):
                 print(f"  {i}. {name}")
             print()
 
-        if not_found_list:
+        if new_added_list:
             print(f"{'='*70}")
-            print(f"⚠️ profiles_master.csvに存在しない名前リスト ({len(not_found_list)}件)")
+            print(f"🆕 新規登録された名前リスト ({len(new_added_list)}件)")
             print(f"{'='*70}")
-            for i, name in enumerate(not_found_list, 1):
+            for i, name in enumerate(new_added_list, 1):
                 print(f"  {i}. {name}")
             print()
 
