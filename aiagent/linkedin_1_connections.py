@@ -184,36 +184,25 @@ def send_connections_on_page(driver, log_file, current_total=0, max_requests=50)
 
     time.sleep(3)  # 最終的な読み込みを待つ
 
-    # つながり申請リンクを検出（LinkedInが<a>タグで実装している）
+    # つながり申請ボタン/リンクを検出（複数パターンに対応）
     # 既申請（承認待ち）の候補者は除外
     script = """
     const candidates = [];
+    const foundNames = new Set(); // 重複除外用
 
-    // <a>タグで aria-label に「つながりを申請」を含むものを検索
+    // パターン1: <a>タグで aria-label に「つながりを申請」を含むもの
     const connectLinks = document.querySelectorAll('a[aria-label*="つながりを申請"]');
-
     connectLinks.forEach((link) => {
         const ariaLabel = link.getAttribute('aria-label') || '';
-
-        // aria-labelから候補者名を抽出
-        // 例: "奈良 明久さんにつながりを申請する" → "奈良 明久"
         const match = ariaLabel.match(/(.+?)さんにつながりを申請/);
 
         if (match && match[1]) {
             const name = match[1].trim();
 
-            // 有効な名前かチェック
-            if (name && name.length >= 2 &&
-                name !== 'つながる' &&
-                name !== 'つながり' &&
-                name !== 'ホーム' &&
-                name !== 'メッセージ') {
-
+            if (name && name.length >= 2 && !foundNames.has(name)) {
                 // 既申請（承認待ち）かチェック
-                // リンクの親要素を遡って候補者カードを探す
                 let card = link.closest('li');
                 if (!card) {
-                    // liが見つからない場合、親要素を10階層まで遡る
                     let parent = link.parentElement;
                     for (let i = 0; i < 10 && parent; i++) {
                         if (parent.tagName === 'LI') {
@@ -224,7 +213,6 @@ def send_connections_on_page(driver, log_file, current_total=0, max_requests=50)
                     }
                 }
 
-                // カード内に「承認待ち」ボタンがあるかチェック
                 let isPending = false;
                 if (card) {
                     const buttons = card.querySelectorAll('button');
@@ -239,12 +227,74 @@ def send_connections_on_page(driver, log_file, current_total=0, max_requests=50)
                     }
                 }
 
-                // 承認待ちでなければ候補者に追加
                 if (!isPending) {
                     candidates.push({
                         name: name,
-                        buttonText: 'つながる'
+                        buttonText: 'つながる',
+                        elementType: 'link'
                     });
+                    foundNames.add(name);
+                }
+            }
+        }
+    });
+
+    // パターン2: <button>タグで「つながる」「つながりを申請」「Connect」を含むもの
+    const allButtons = document.querySelectorAll('button');
+    allButtons.forEach((btn) => {
+        const text = btn.textContent.trim();
+        const textLower = text.toLowerCase();
+
+        // ヘッダーのボタンは除外
+        if (btn.closest('header')) return;
+
+        // つながり申請ボタンかチェック
+        if (text.includes('つながり') || text.includes('つながる') || textLower.includes('connect')) {
+            // 候補者カードを探す
+            let card = btn.parentElement;
+            for (let i = 0; i < 8; i++) {
+                if (card && card.innerText && card.innerText.includes('•')) {
+                    break;
+                }
+                if (card) {
+                    card = card.parentElement;
+                }
+            }
+
+            if (card && card.innerText) {
+                const lines = card.innerText.split('\\n');
+                if (lines[0]) {
+                    let name = lines[0].split('•')[0].trim();
+
+                    if (name && name.length >= 2 &&
+                        name !== 'つながる' &&
+                        name !== 'つながり' &&
+                        name !== 'ホーム' &&
+                        name !== 'メッセージ' &&
+                        !foundNames.has(name)) {
+
+                        // 既申請（承認待ち）かチェック
+                        const cardButtons = card.querySelectorAll('button');
+                        let isPending = false;
+                        for (const cardBtn of cardButtons) {
+                            const btnText = cardBtn.textContent.trim();
+                            const btnAria = cardBtn.getAttribute('aria-label') || '';
+                            if (btnText.includes('承認待ち') || btnText.includes('Pending') ||
+                                btnAria.includes('承認待ち') || btnAria.includes('Pending')) {
+                                isPending = true;
+                                break;
+                            }
+                        }
+
+                        if (!isPending) {
+                            candidates.push({
+                                name: name,
+                                buttonText: text,
+                                elementType: 'button'
+                            });
+                            foundNames.add(name);
+                        }
+                    }
                 }
             }
         }
@@ -271,36 +321,69 @@ def send_connections_on_page(driver, log_file, current_total=0, max_requests=50)
                 break
 
             name = candidate['name']
+            element_type = candidate.get('elementType', 'link')
 
-            # リンクをクリック
+            # ボタン/リンクをクリック（両パターン対応）
             try:
-                # JavaScriptで直接クリック（aria-labelで検索）
+                # JavaScriptで直接クリック
                 safe_name = name.replace("'", "\\'").replace('"', '\\"')
 
                 click_script = f"""
-                // <a>タグで aria-label に候補者名を含むものを検索
-                const connectLinks = document.querySelectorAll('a[aria-label*="つながりを申請"]');
-                let targetLink = null;
+                let targetElement = null;
 
+                // パターン1: <a>タグで aria-label に候補者名を含むものを検索
+                const connectLinks = document.querySelectorAll('a[aria-label*="つながりを申請"]');
                 for (const link of connectLinks) {{
                     const ariaLabel = link.getAttribute('aria-label') || '';
-
-                    // aria-labelから候補者名を抽出
                     const match = ariaLabel.match(/(.+?)さんにつながりを申請/);
 
                     if (match && match[1]) {{
                         const candidateName = match[1].trim();
-
                         if (candidateName === '{safe_name}') {{
-                            targetLink = link;
+                            targetElement = link;
                             break;
                         }}
                     }}
                 }}
 
-                if (targetLink) {{
-                    targetLink.scrollIntoView({{ block: 'center', behavior: 'instant' }});
-                    targetLink.click();
+                // パターン2: <button>タグで候補者名を含むものを検索
+                if (!targetElement) {{
+                    const allButtons = document.querySelectorAll('button');
+                    for (const btn of allButtons) {{
+                        const text = btn.textContent.trim();
+                        const textLower = text.toLowerCase();
+
+                        if ((text.includes('つながり') || text.includes('つながる') || textLower.includes('connect')) &&
+                            !btn.closest('header')) {{
+
+                            let card = btn.parentElement;
+                            for (let i = 0; i < 8; i++) {{
+                                if (card && card.innerText && card.innerText.includes('•')) {{
+                                    break;
+                                }}
+                                if (card) {{
+                                    card = card.parentElement;
+                                }}
+                            }}
+
+                            if (card && card.innerText) {{
+                                const lines = card.innerText.split('\\n');
+                                if (lines[0]) {{
+                                    let cardName = lines[0].split('•')[0].trim();
+
+                                    if (cardName === '{safe_name}') {{
+                                        targetElement = btn;
+                                        break;
+                                    }}
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+
+                if (targetElement) {{
+                    targetElement.scrollIntoView({{ block: 'center', behavior: 'instant' }});
+                    targetElement.click();
                     return {{ success: true }};
                 }}
                 return {{ success: false }};
