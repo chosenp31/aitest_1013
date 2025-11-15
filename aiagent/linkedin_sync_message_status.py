@@ -175,55 +175,131 @@ def get_message_names(driver, scroll_count):
     time.sleep(5)
 
     # スクロール実行
-    print("📜 メッセージリストをスクロール中...")
+    print("📜 左側メッセージ一覧をスクロール中...")
 
-    # メッセージリストコンテナを特定（複数の方法を試す）
-    scroll_script = """
+    # 左側メッセージ一覧のコンテナを特定（複数の方法を試す）
+    detect_script = """
     let container = null;
+    let detectionMethod = '';
 
-    // 方法1: class名で検索
-    container = document.querySelector('.msg-conversations-container__convo-item-list');
-
-    // 方法2: role属性で検索
-    if (!container) {
-        container = document.querySelector('[role="list"]');
+    // 方法1: 最も具体的なclass名（左側メッセージ一覧）
+    container = document.querySelector('.msg-conversations-container__convo-list');
+    if (container) {
+        detectionMethod = '.msg-conversations-container__convo-list';
     }
 
-    // 方法3: data属性で検索
+    // 方法2: 代替class名
     if (!container) {
-        const allLists = document.querySelectorAll('[class*="msg"]');
-        for (const el of allLists) {
-            if (el.scrollHeight > el.clientHeight) {
+        container = document.querySelector('.msg-conversations-container .scrollable');
+        if (container) {
+            detectionMethod = '.msg-conversations-container .scrollable';
+        }
+    }
+
+    // 方法3: msg-conversations-list
+    if (!container) {
+        container = document.querySelector('.msg-conversations-list');
+        if (container) {
+            detectionMethod = '.msg-conversations-list';
+        }
+    }
+
+    // 方法4: 親要素の2番目の子要素（構造による指定）
+    if (!container) {
+        const parent = document.querySelector('.msg-conversations-container');
+        if (parent) {
+            container = parent.querySelector('div:nth-child(2)');
+            if (container && container.scrollHeight > container.clientHeight) {
+                detectionMethod = '.msg-conversations-container > div:nth-child(2)';
+            } else {
+                container = null;
+            }
+        }
+    }
+
+    // 方法5: 左側領域のスクロール可能要素を位置で判定
+    if (!container) {
+        const scrollables = document.querySelectorAll('[class*="msg-conversations"]');
+        for (const el of scrollables) {
+            const rect = el.getBoundingClientRect();
+            const style = window.getComputedStyle(el);
+            // 左側（x座標が小さい）かつスクロール可能
+            if (rect.x < 500 && rect.width > 300 && rect.width < 500 &&
+                (style.overflowY === 'auto' || style.overflowY === 'scroll') &&
+                el.scrollHeight > el.clientHeight) {
                 container = el;
+                detectionMethod = '位置判定 (x < 500, width 300-500)';
                 break;
             }
         }
     }
 
-    return !!container;
+    return {
+        found: !!container,
+        method: detectionMethod,
+        scrollHeight: container ? container.scrollHeight : 0,
+        clientHeight: container ? container.clientHeight : 0
+    };
     """
 
-    has_container = driver.execute_script(scroll_script)
+    detection_result = driver.execute_script(detect_script)
 
-    if has_container:
-        print("✅ メッセージリストコンテナを検出\n")
+    if detection_result['found']:
+        print(f"✅ 左側メッセージ一覧コンテナを検出")
+        print(f"   検出方法: {detection_result['method']}")
+        print(f"   スクロール可能高さ: {detection_result['scrollHeight']}px")
+        print(f"   表示領域高さ: {detection_result['clientHeight']}px\n")
 
+        # スクロール実行
         for i in range(scroll_count):
             scroll_amount = random.randint(400, 600)
-            driver.execute_script(f"""
-                const container = document.querySelector('.msg-conversations-container__convo-item-list') ||
-                                 document.querySelector('[role="list"]');
-                if (container) {{
-                    container.scrollBy(0, {scroll_amount});
+
+            scroll_result = driver.execute_script(f"""
+                let container = document.querySelector('.msg-conversations-container__convo-list') ||
+                               document.querySelector('.msg-conversations-container .scrollable') ||
+                               document.querySelector('.msg-conversations-list');
+
+                // フォールバック: 位置判定
+                if (!container) {{
+                    const scrollables = document.querySelectorAll('[class*="msg-conversations"]');
+                    for (const el of scrollables) {{
+                        const rect = el.getBoundingClientRect();
+                        const style = window.getComputedStyle(el);
+                        if (rect.x < 500 && rect.width > 300 && rect.width < 500 &&
+                            (style.overflowY === 'auto' || style.overflowY === 'scroll')) {{
+                            container = el;
+                            break;
+                        }}
+                    }}
                 }}
+
+                if (container) {{
+                    const beforeScroll = container.scrollTop;
+                    container.scrollBy(0, {scroll_amount});
+                    const afterScroll = container.scrollTop;
+                    return {{
+                        success: true,
+                        scrolled: afterScroll - beforeScroll,
+                        currentPosition: afterScroll,
+                        totalHeight: container.scrollHeight
+                    }};
+                }}
+                return {{ success: false }};
             """)
-            wait_time = random.uniform(2, 4)
-            time.sleep(wait_time)
-            print(f"   スクロール {i+1}/{scroll_count} 完了")
+
+            if scroll_result['success']:
+                wait_time = random.uniform(2, 4)
+                time.sleep(wait_time)
+                print(f"   スクロール {i+1}/{scroll_count} 完了 (位置: {scroll_result['currentPosition']}px / {scroll_result['totalHeight']}px)")
+            else:
+                print(f"   ⚠️ スクロール {i+1}/{scroll_count} 失敗")
+                break
 
         print("\n✅ スクロール完了\n")
     else:
-        print("⚠️ メッセージリストコンテナが見つかりません\n")
+        print("⚠️ 左側メッセージ一覧コンテナが見つかりません")
+        print("   手動でメッセージ一覧を下にスクロールしてから Enter を押してください...\n")
+        input()
 
     time.sleep(3)
 
