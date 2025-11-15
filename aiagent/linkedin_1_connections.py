@@ -309,55 +309,25 @@ def send_connections_on_page(driver, log_file, current_total=0, max_requests=50)
                 result = driver.execute_script(click_script)
 
                 if result['success']:
-                    time.sleep(3)  # モーダルの完全な読み込みを待つ
+                    time.sleep(2)
 
-                    # モーダルが出た場合は「挨拶なしで送信」をクリック
-                    # 優先順位順に複数の方法で検索
-                    modal_clicked = driver.execute_script("""
-                        // 方法1: data-control-name 属性で検索（最も信頼性が高い）
-                        let sendButton = document.querySelector('button[data-control-name="send_without_note"]');
-
-                        // 方法2: aria-label で検索
-                        if (!sendButton) {
-                            const buttons = document.querySelectorAll('button');
-                            for (const btn of buttons) {
-                                const ariaLabel = btn.getAttribute('aria-label') || '';
-                                if (ariaLabel.includes('Send without') || ariaLabel.includes('挨拶なしで')) {
-                                    sendButton = btn;
-                                    break;
-                                }
+                    # モーダルが出た場合は「送信」をJavaScriptでクリック
+                    send_clicked = driver.execute_script("""
+                        const buttons = document.querySelectorAll('button');
+                        for (const btn of buttons) {
+                            const text = btn.textContent.trim();
+                            const ariaLabel = btn.getAttribute('aria-label') || '';
+                            if (text.includes('送信') || text.includes('Send') ||
+                                ariaLabel.includes('送信') || ariaLabel.includes('Send')) {
+                                btn.click();
+                                return true;
                             }
-                        }
-
-                        // 方法3: モーダル内のプライマリボタン
-                        if (!sendButton) {
-                            const modal = document.querySelector('div[role="dialog"]');
-                            if (modal) {
-                                sendButton = modal.querySelector('button.artdeco-button--primary:last-child');
-                            }
-                        }
-
-                        // 方法4: テキストで検索（フォールバック）
-                        if (!sendButton) {
-                            const buttons = document.querySelectorAll('button');
-                            for (const btn of buttons) {
-                                const text = btn.textContent.trim();
-                                if (text.includes('挨拶なしで送信') || text.includes('Send without')) {
-                                    sendButton = btn;
-                                    break;
-                                }
-                            }
-                        }
-
-                        if (sendButton) {
-                            sendButton.click();
-                            return true;
                         }
                         return false;
                     """)
 
-                    if modal_clicked:
-                        time.sleep(2)  # 送信完了を待つ
+                    if send_clicked:
+                        time.sleep(1)
 
                     print(f"   ✅ {name} - つながり申請を送信")
                     success_count += 1
