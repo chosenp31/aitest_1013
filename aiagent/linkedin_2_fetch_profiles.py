@@ -631,8 +631,10 @@ def main(account_name, paths, start_date, max_profiles):
         print(f"✅ 新規追加: {new_count} 件\n")
         save_profiles_master(profiles_master, paths['profiles_master_file'])
 
-        # Step 2: プロフィール詳細取得（profile_fetched=no のみ）
-        profiles_to_fetch = [p for p in profiles_master.values() if p.get('profile_fetched') == 'no']
+        # Step 2: プロフィール詳細取得（profile_fetched=no かつ message_sent_status != '送信済' のみ）
+        profiles_to_fetch = [p for p in profiles_master.values()
+                             if p.get('profile_fetched') == 'no'
+                             and p.get('message_sent_status') != '送信済']
 
         # 取得数制限
         if max_profiles > 0 and len(profiles_to_fetch) > max_profiles:
