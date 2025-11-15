@@ -631,9 +631,14 @@ def main(account_name, paths, start_date, max_profiles):
         print(f"✅ 新規追加: {new_count} 件\n")
         save_profiles_master(profiles_master, paths['profiles_master_file'])
 
-        # Step 2: プロフィール詳細取得（profile_fetched=no かつ message_sent_status != '送信済' のみ）
+        # 今回取得したつながりのprofile_urlセットを作成
+        current_connection_urls = {conn['profile_url'] for conn in connections}
+
+        # Step 2: プロフィール詳細取得
+        # 条件: 今回取得したつながり かつ profile_fetched=no かつ message_sent_status != '送信済'
         profiles_to_fetch = [p for p in profiles_master.values()
-                             if p.get('profile_fetched') == 'no'
+                             if p.get('profile_url') in current_connection_urls
+                             and p.get('profile_fetched') == 'no'
                              and p.get('message_sent_status') != '送信済']
 
         # 取得数制限
