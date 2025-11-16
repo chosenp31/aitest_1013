@@ -81,7 +81,8 @@ def save_profiles_master(profiles_master, profiles_master_file):
         "profile_fetched", "profile_fetched_at",
         "total_score", "scoring_decision", "exclusion_reason",
         "message_generated", "message_generated_at",
-        "message_sent_status", "message_sent_at", "last_send_error"
+        "message_sent_status", "message_sent_at", "last_send_error",
+        "duplicate_name_flag"
     ]
 
     with open(profiles_master_file, "w", newline="", encoding="utf-8") as f:
@@ -464,10 +465,16 @@ def main(account_name, paths, scroll_count):
                     # 1件のみ: 更新
                     profile = profiles[0]
                     profile['message_sent_status'] = '送信済'
+                    profile['profile_fetched'] = '送信済のため不要'
+                    profile['scoring_decision'] = '送信済のため不要'
+                    profile['exclusion_reason'] = 'メッセージ送信済のため対象外'
                     updated_list.append(message_name)
                 else:
-                    # 複数件: 同姓同名エラー
+                    # 複数件: 同姓同名 - 何も更新しない
                     duplicate_list.append(message_name)
+                    # 同姓同名フラグを全ての該当レコードに設定
+                    for profile in profiles:
+                        profile['duplicate_name_flag'] = '同姓同名あり'
             else:
                 # profiles_master.csvに存在しない → 新規登録
                 import uuid
@@ -477,23 +484,39 @@ def main(account_name, paths, scroll_count):
                     "profile_url": "",  # 空欄
                     "name": message_name,
                     "connected_date": "",
-                    "profile_fetched": "no",
+                    "profile_fetched": "送信済のため不要",
                     "profile_fetched_at": "",
                     "total_score": "",
-                    "scoring_decision": "",
-                    "exclusion_reason": "",
+                    "scoring_decision": "送信済のため不要",
+                    "exclusion_reason": "メッセージ送信済のため対象外",
                     "message_generated": "no",
                     "message_generated_at": "",
                     "message_sent_status": "送信済",
                     "message_sent_at": "",
-                    "last_send_error": ""
+                    "last_send_error": "",
+                    "duplicate_name_flag": ""
                 }
 
                 profiles_master[temp_key] = new_profile
                 new_added_list.append(message_name)
 
+        # 同姓同名チェック（全体で実施）
+        name_counts = {}
+        for profile in profiles_master.values():
+            name = profile.get('name', '')
+            if name:
+                name_counts[name] = name_counts.get(name, 0) + 1
+
+        # 同姓同名フラグを設定
+        for profile in profiles_master.values():
+            name = profile.get('name', '')
+            if name and name_counts.get(name, 0) > 1:
+                profile['duplicate_name_flag'] = '同姓同名あり'
+            elif 'duplicate_name_flag' not in profile:
+                profile['duplicate_name_flag'] = ''
+
         # profiles_master.csv 保存
-        if updated_list or new_added_list:
+        if updated_list or new_added_list or duplicate_list:
             save_profiles_master(profiles_master, paths['profiles_master_file'])
             print(f"💾 profiles_master.csv 更新完了\n")
 

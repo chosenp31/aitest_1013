@@ -91,7 +91,8 @@ def save_profiles_master(profiles_master, profiles_master_file):
         "profile_fetched", "profile_fetched_at",
         "total_score", "scoring_decision", "exclusion_reason",
         "message_generated", "message_generated_at",
-        "message_sent_status", "message_sent_at", "last_send_error"
+        "message_sent_status", "message_sent_at", "last_send_error",
+        "duplicate_name_flag"
     ]
 
     with open(profiles_master_file, "w", newline="", encoding="utf-8") as f:
@@ -118,7 +119,8 @@ def update_profile_master(profiles_master, profile_url, updates):
             "message_generated_at": "",
             "message_sent_status": "pending",
             "message_sent_at": "",
-            "last_send_error": ""
+            "last_send_error": "",
+            "duplicate_name_flag": ""
         }
 
     profiles_master[profile_url].update(updates)
