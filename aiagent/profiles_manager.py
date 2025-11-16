@@ -101,17 +101,17 @@ def load_profiles_master(profiles_master_file):
             status = row.get('message_sent_status', '')
             message_generated = row.get('message_generated', '')
 
-            # エッジケース: skipなのにsuccess → 送信済を優先
-            if status == 'success':
+            # 送信済（message_sent_status='送信済' or 'success'）
+            if status == '送信済' or status == 'success':
                 return '送信済'
+
+            # 送信対象外（scoring_decision='送信済のため不要' or 'skip'）
+            if decision == '送信済のため不要' or decision == 'skip':
+                return '送信対象外'
 
             # 判定前
             if pd.isna(decision) or decision == '':
                 return '判定前'
-
-            # skip → 送信対象外
-            if decision == 'skip':
-                return '送信対象外'
 
             # send の場合
             if decision == 'send':
