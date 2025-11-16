@@ -35,10 +35,41 @@ def load_profiles_master(profiles_master_file):
             "profile_fetched", "profile_fetched_at",
             "total_score", "scoring_decision", "exclusion_reason",
             "message_generated", "message_generated_at",
-            "message_sent_status", "message_sent_at", "last_send_error"
+            "message_sent_status", "message_sent_at", "last_send_error",
+            "duplicate_name_flag"
         ])
 
     df = pd.read_csv(profiles_master_file)
+
+    # プロフィール情報取得状況の表示変換
+    if 'profile_fetched' in df.columns:
+        def get_profile_fetched_display(value):
+            if pd.isna(value) or value == '':
+                return '未取得'
+            elif value == 'yes':
+                return '取得済'
+            elif value == 'no':
+                return '未取得'
+            elif value == '送信済のため不要':
+                return '送信済のため不要'
+            else:
+                return value
+
+        df['プロフィール情報取得状況_display'] = df['profile_fetched'].apply(get_profile_fetched_display)
+
+    # メッセージ生成状況の表示変換
+    if 'message_generated' in df.columns:
+        def get_message_generated_display(value):
+            if pd.isna(value) or value == '':
+                return '未作成'
+            elif value == 'yes':
+                return '作成済'
+            elif value == 'no':
+                return '未作成'
+            else:
+                return value
+
+        df['メッセージ生成状況_display'] = df['message_generated'].apply(get_message_generated_display)
 
     # スコア表示の調整：skipの場合は"-"で表示
     if 'total_score' in df.columns and 'scoring_decision' in df.columns:
@@ -56,6 +87,8 @@ def load_profiles_master(profiles_master_file):
                 return '○'
             elif decision == 'skip':
                 return '✖️'
+            elif decision == '送信済のため不要':
+                return '送信済のため不要'
             else:
                 return '判定前'
 
@@ -101,7 +134,13 @@ def save_profiles_master(df, profiles_master_file):
     """profiles_master.csv を保存"""
     # 表示用の列は保存しない
     save_df = df.copy()
-    display_columns = ['total_score_display', '送信対象_display', '送信ステータス_display']
+    display_columns = [
+        'total_score_display',
+        '送信対象_display',
+        '送信ステータス_display',
+        'プロフィール情報取得状況_display',
+        'メッセージ生成状況_display'
+    ]
     for col in display_columns:
         if col in save_df.columns:
             save_df = save_df.drop(columns=[col])
@@ -246,16 +285,41 @@ def main():
     # 表示用のデータフレーム作成
     display_df = filtered_df.copy()
 
-    # 表示列を選択
-    display_columns = ['name', 'total_score_display', '送信対象_display', 'exclusion_reason', '送信ステータス_display', 'message_sent_at', 'last_send_error']
+    # 表示列を選択（新しい列を追加）
+    display_columns = [
+        'name',
+        'プロフィール情報取得状況_display',
+        'メッセージ生成状況_display',
+        'total_score_display',
+        '送信対象_display',
+        'exclusion_reason',
+        '送信ステータス_display',
+        'message_sent_at',
+        'last_send_error',
+        'duplicate_name_flag'
+    ]
     display_df_filtered = display_df[display_columns].copy()
-    display_df_filtered.columns = ['名前', 'スコア', '送信対象', '除外理由', '送信ステータス', '送信日時', 'エラー内容']
+    display_df_filtered.columns = [
+        '名前',
+        'プロフィール情報取得状況',
+        'メッセージ生成状況',
+        'スコア',
+        '送信対象',
+        '除外理由',
+        '送信ステータス',
+        '送信日時',
+        'エラー内容',
+        '同姓同名フラグ'
+    ]
 
     # スタイリング関数
     def style_row(row):
         """行ごとのスタイルを設定"""
+        # 同姓同名フラグがある場合、赤色で目立たせる
+        if row.get('同姓同名フラグ') == '同姓同名あり':
+            return ['background-color: #ffe0e0; border: 2px solid #ff0000'] * len(row)
         # 送信対象が✖️の場合、グレーアウト
-        if row['送信対象'] == '✖️':
+        elif row['送信対象'] == '✖️' or row['送信対象'] == '送信済のため不要':
             return ['background-color: #f0f0f0; color: #888888'] * len(row)
         # 送信ステータスが「送信待」の場合、薄い黄色
         elif row['送信ステータス'] == '送信待':
