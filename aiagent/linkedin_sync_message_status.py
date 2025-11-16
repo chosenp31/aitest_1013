@@ -67,8 +67,14 @@ def load_profiles_master(profiles_master_file):
                 reader = csv.DictReader(f)
                 for row in reader:
                     profile_url = row.get('profile_url', '')
+                    # profile_urlが空欄の場合は、UUIDをkeyにする
                     if profile_url:
-                        profiles_master[profile_url] = row
+                        key = profile_url
+                    else:
+                        # profile_urlが空欄（メッセージ同期から追加されたレコード）
+                        import uuid
+                        key = f"empty_{uuid.uuid4()}"
+                    profiles_master[key] = row
         except Exception as e:
             print(f"⚠️ profiles_master.csv 読み込みエラー: {e}\n")
 
