@@ -618,19 +618,55 @@ def main(account_name, paths, start_date, max_profiles):
             driver.quit()
             return
 
+        # 名前でインデックスを作成（既存レコードの名前チェック用）
+        name_to_profiles = {}
+        for url, profile in profiles_master.items():
+            name = profile.get('name', '')
+            if name:
+                if name not in name_to_profiles:
+                    name_to_profiles[name] = []
+                name_to_profiles[name].append(profile)
+
         # 新規つながりを profiles_master に追加
         new_count = 0
+        skipped_list = []
+        duplicate_name_list = []
+
         for conn in connections:
             profile_url = conn['profile_url']
-            if profile_url not in profiles_master:
-                update_profile_master(profiles_master, profile_url, {
-                    'name': conn['name'],
-                    'connected_date': conn['connected_date'],
-                    'profile_fetched': 'no'
-                })
-                new_count += 1
+            name = conn['name']
 
-        print(f"✅ 新規追加: {new_count} 件\n")
+            # profile_urlでの重複チェック（既存ロジック）
+            if profile_url not in profiles_master:
+                # 名前でのチェック（①メッセージ同期の情報を優先）
+                if name in name_to_profiles:
+                    # 既に同じ名前が存在
+                    if len(name_to_profiles[name]) == 1:
+                        # 1件のみ: スキップ（①の情報を保護）
+                        skipped_list.append(name)
+                    else:
+                        # 複数件: 同姓同名エラー
+                        duplicate_name_list.append(name)
+                else:
+                    # 新規追加
+                    update_profile_master(profiles_master, profile_url, {
+                        'name': conn['name'],
+                        'connected_date': conn['connected_date'],
+                        'profile_fetched': 'no'
+                    })
+                    new_count += 1
+                    # インデックスも更新
+                    name_to_profiles[name] = [profiles_master[profile_url]]
+
+        print(f"✅ 新規追加: {new_count} 件")
+        if skipped_list:
+            print(f"⏭️  既に同じ名前が存在するためスキップ: {len(skipped_list)} 件")
+            print(f"   スキップされた名前: {', '.join(skipped_list[:10])}" + (" ..." if len(skipped_list) > 10 else ""))
+        if duplicate_name_list:
+            print(f"⚠️  同姓同名のためスキップ: {len(duplicate_name_list)} 件")
+            print(f"   同姓同名: {', '.join(duplicate_name_list[:10])}" + (" ..." if len(duplicate_name_list) > 10 else ""))
+        print()
+
         save_profiles_master(profiles_master, paths['profiles_master_file'])
 
         # 今回取得したつながりのprofile_urlセットを作成
